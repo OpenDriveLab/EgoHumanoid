@@ -1,0 +1,6 @@
+# dataset-dir: "/cpfs01/shared/pengshijia/data/human/raw_data/toy/reorder/" 
+baseline-sec: 15 
+tangent-lag: 5 
+# out-dir: "/cpfs01/shared/pengshijia/data/human/raw_data/toy/reorder/" 
+overwrite: true
+no-png: true  
