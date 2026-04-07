@@ -119,7 +119,7 @@ class HDF5DeltaEEFProvider:
         self.preparation_duration = preparation_duration
         self.disable_lower_body = disable_lower_body
         
-        # 初始化 IK 求解器
+        # Initialize IK solver
         left_hand_ik_solver, right_hand_ik_solver = instantiate_g1_hand_ik_solver()
         self.retargeting_ik = TeleopRetargetingIK(
             robot_model=robot_model,
@@ -128,12 +128,12 @@ class HDF5DeltaEEFProvider:
             enable_visualization=False,
             body_active_joint_groups=["upper_body"],
         )
-        
-        # 获取手腕 frame 名称
+
+        # Get wrist frame names
         self.left_wrist_frame = robot_model.supplemental_info.hand_frame_names["left"]
         self.right_wrist_frame = robot_model.supplemental_info.hand_frame_names["right"]
-        
-        # 回放状态
+
+        # Replay state
         self.is_replaying = False
         self.is_preparing = False
         self.preparation_complete = False
@@ -141,8 +141,8 @@ class HDF5DeltaEEFProvider:
         self.current_frame_idx = 0
         self.last_frame_time = None
         self.frame_interval = None
-        
-        # 准备阶段相关
+
+        # Preparation phase related
         self.preparation_start_time = None
         self.preparation_start_upper_body = None
         self.preparation_target_upper_body = None
@@ -282,26 +282,26 @@ class HDF5DeltaEEFProvider:
     
     def _transform_matrix_to_eef(self, T_left: np.ndarray, T_right: np.ndarray) -> np.ndarray:
         """
-        将变换矩阵转换为 EEF 数据格式
-        
+        Convert transformation matrix to EEF data format
+
         Args:
-            T_left: (4, 4) 左手变换矩阵
-            T_right: (4, 4) 右手变换矩阵
-        
+            T_left: (4, 4) left hand transformation matrix
+            T_right: (4, 4) right hand transformation matrix
+
         Returns:
             (14,) [left: x,y,z,qw,qx,qy,qz, right: x,y,z,qw,qx,qy,qz]
         """
-        # 提取位置和旋转
+        # Extract position and rotation
         left_pos = T_left[:3, 3]
         left_quat_vector_first = R.from_matrix(T_left[:3, :3]).as_quat()  # (x, y, z, w)
         left_quat_scalar_first = np.array([left_quat_vector_first[3], left_quat_vector_first[0],
                                           left_quat_vector_first[1], left_quat_vector_first[2]])  # (w, x, y, z)
-        
+
         right_pos = T_right[:3, 3]
         right_quat_vector_first = R.from_matrix(T_right[:3, :3]).as_quat()  # (x, y, z, w)
         right_quat_scalar_first = np.array([right_quat_vector_first[3], right_quat_vector_first[0],
                                             right_quat_vector_first[1], right_quat_vector_first[2]])  # (w, x, y, z)
-        
+
         return np.concatenate([
             left_pos, left_quat_scalar_first,
             right_pos, right_quat_scalar_first
@@ -309,63 +309,63 @@ class HDF5DeltaEEFProvider:
     
     def _apply_delta_to_eef(self, eef_data: np.ndarray, delta_eef: np.ndarray) -> np.ndarray:
         """
-        将 delta_eef 应用到 eef_data 上
-        
+        Apply delta_eef to eef_data
+
         Args:
-            eef_data: (14,) 当前 EEF 位姿
+            eef_data: (14,) current EEF pose
             delta_eef: (12,) [left: dx,dy,dz,roll,pitch,yaw, right: dx,dy,dz,roll,pitch,yaw]
-        
+
         Returns:
-            (14,) 应用 delta 后的新 EEF 位姿
+            (14,) new EEF pose after applying delta
         """
-        # 将当前 EEF 转换为变换矩阵
+        # Convert current EEF to transformation matrix
         T_dict = self._eef_to_transformation_matrix(eef_data)
         T_left_curr = T_dict[self.left_wrist_frame]
         T_right_curr = T_dict[self.right_wrist_frame]
-        
-        # 提取左右手的 delta
+
+        # Extract left and right hand deltas
         left_delta = delta_eef[:6]  # [dx, dy, dz, roll, pitch, yaw]
         right_delta = delta_eef[6:12]  # [dx, dy, dz, roll, pitch, yaw]
-        
-        # 将 delta 转换为变换矩阵
+
+        # Convert delta to transformation matrix
         delta_T_left = self._delta_to_transform_matrix(left_delta)
         delta_T_right = self._delta_to_transform_matrix(right_delta)
-        
-        # 应用 delta：T_new = T_curr @ delta_T
+
+        # Apply delta: T_new = T_curr @ delta_T
         T_left_new = T_left_curr @ delta_T_left
         T_right_new = T_right_curr @ delta_T_right
-        
-        # 转换回 EEF 格式
+
+        # Convert back to EEF format
         return self._transform_matrix_to_eef(T_left_new, T_right_new)
     
     def _compute_upper_body_joints_from_eef(self, eef_data: np.ndarray) -> np.ndarray:
         """
-        从 EEF 位姿计算上半身关节角度
-        
-        使用与 TeleopPolicy 相同的方式：通过 set_goal() 和 get_action() 来维护状态连续性
-        
+        Calculate upper body joint angles from EEF pose
+
+        Uses the same approach as TeleopPolicy: maintains state continuity through set_goal() and get_action()
+
         Args:
-            eef_data: (14,) EEF 位姿
-        
+            eef_data: (14,) EEF pose
+
         Returns:
-            (N,) 上半身关节角度
+            (N,) upper body joint angles
         """
-        # 转换为变换矩阵
+        # Convert to transformation matrix
         body_data = self._eef_to_transformation_matrix(eef_data)
-        
-        # 使用与 TeleopPolicy 相同的方式：set_goal() + get_action()
+
+        # Use the same approach as TeleopPolicy: set_goal() + get_action()
         ik_data = {
             "body_data": body_data,
-            "left_hand_data": None,  # type: ignore  # 不使用手部 IK
-            "right_hand_data": None,  # type: ignore  # 不使用手部 IK
+            "left_hand_data": None,  # type: ignore  # Don't use hand IK
+            "right_hand_data": None,  # type: ignore  # Don't use hand IK
         }
         self.retargeting_ik.set_goal(ik_data)
         target_joints = np.array(self.retargeting_ik.get_action())  # type: ignore
-        
+
         return target_joints
     
     def handle_keyboard_button(self, key):
-        """处理键盘按键"""
+        """Handle keyboard button press"""
         if key == "p":
             if not self.is_preparing and not self.is_replaying:
                 self.is_preparing = True
@@ -374,7 +374,7 @@ class HDF5DeltaEEFProvider:
                 self.preparation_start_upper_body = None
                 self.preparation_target_upper_body = None
                 self.preparation_target_wrist = None
-                print("\n[HDF5 Delta EEF] 🔄 Entering preparation phase: slowly moving to first frame position...")
+                print("\n[HDF5 Delta EEF] Entering preparation phase: slowly moving to first frame position...")
 
                 # Print first frame left and right hand position and quaternion
                 if len(self.episodes) > 0:
@@ -392,17 +392,17 @@ class HDF5DeltaEEFProvider:
                 print(f"[HDF5 Delta EEF] Preparation time: {self.preparation_duration}s, press 'l' to start replay after completion")
         elif key == "l":
             if self.is_preparing:
-                print("\n[HDF5 Delta EEF] ⚠️ Preparation phase not complete, please wait for completion before pressing 'l'")
+                print("\n[HDF5 Delta EEF] Warning: Preparation phase not complete, please wait for completion before pressing 'l'")
                 return
 
             if not self.preparation_complete and not self.is_replaying:
-                print("\n[HDF5 Delta EEF] ⚠️ Please press 'p' to complete preparation phase first")
+                print("\n[HDF5 Delta EEF] Warning: Please press 'p' to complete preparation phase first")
                 return
 
             self.is_replaying = not self.is_replaying
             if self.is_replaying:
                 self.preparation_complete = False
-                print("\n[HDF5 Delta EEF] ▶ Starting replay")
+                print("\n[HDF5 Delta EEF] Starting replay")
                 self.current_frame_idx = 0
                 self.last_frame_time = time.time()
                 ep = self.episodes[self.current_episode_idx]
@@ -411,7 +411,7 @@ class HDF5DeltaEEFProvider:
                 self.current_cumulative_eef = ep["initial_eef"].copy()
                 print(f"[HDF5 Delta EEF] Reset cumulative EEF to initial value")
             else:
-                print("\n[HDF5 Delta EEF] ⏸ Paused replay")
+                print("\n[HDF5 Delta EEF] Paused replay")
     
     def get_command(self, robot_model, current_obs=None) -> Optional[dict]:
         """
@@ -450,7 +450,7 @@ class HDF5DeltaEEFProvider:
                 progress = 1.0
                 self.is_preparing = False
                 self.preparation_complete = True
-                print(f"\n[HDF5 Delta EEF] ✓ Preparation complete! Press 'l' to start replay")
+                print(f"\n[HDF5 Delta EEF] Preparation complete! Press 'l' to start replay")
             else:
                 t = elapsed / self.preparation_duration
                 progress = t * t * (3.0 - 2.0 * t)  # smoothstep
@@ -520,7 +520,7 @@ class HDF5DeltaEEFProvider:
             self.current_episode_idx += 1
 
             if self.current_episode_idx >= len(self.episodes):
-                print("\n[HDF5 Delta EEF] ✓ All episodes replay complete")
+                print("\n[HDF5 Delta EEF] All episodes replay complete")
                 self.is_replaying = False
                 self.current_episode_idx = 0
                 return None
@@ -600,37 +600,37 @@ def main(config: ReplayDeltaEEFIKConfig):
         if confirm != "yes":
             print("Cancelled")
             return
-    
+
     ros_manager = ROSManager(node_name="ReplayDeltaEEFIKControlLoop")
     node = ros_manager.node
-    
-    # 启动配置服务器
+
+    # Start configuration server
     ROSServiceServer(ROBOT_CONFIG_TOPIC, config.to_dict())
-    
-    # 状态发布器
+
+    # State publishers
     data_exp_pub = ROSMsgPublisher(STATE_TOPIC_NAME)
     lower_body_policy_status_pub = ROSMsgPublisher(LOWER_BODY_POLICY_STATUS_TOPIC)
     joint_safety_status_pub = ROSMsgPublisher(JOINT_SAFETY_STATUS_TOPIC)
-    
+
     telemetry = Telemetry(window_size=100)
-    
+
     waist_location = "lower_and_upper_body" if config.enable_waist else "lower_body"
     robot_model = instantiate_g1_robot_model(
         waist_location=waist_location, high_elbow_pose=config.high_elbow_pose
     )
-    
+
     wbc_config = config.load_wbc_yaml()
-    
+
     env = G1Env(
         env_name=config.env_name,
         robot_model=robot_model,
         config=wbc_config,
         wbc_version=config.wbc_version,
     )
-    
+
     wbc_policy = get_wbc_policy("g1", robot_model, wbc_config, config.upper_body_joint_speed)
-    
-    # Delta EEF 提供器（包含 IK 求解器）
+
+    # Delta EEF provider (includes IK solver)
     delta_eef_provider = HDF5DeltaEEFProvider(
         dataset_dir=config.dataset_dir,
         robot_model=robot_model,
@@ -639,8 +639,8 @@ def main(config: ReplayDeltaEEFIKConfig):
         preparation_duration=config.preparation_duration,
         disable_lower_body=config.disable_lower_body,
     )
-    
-    # 键盘调度器
+
+    # Keyboard dispatcher
     keyboard_listener_pub = KeyboardListenerPublisher()
     keyboard_estop = KeyboardEStop()
     if config.keyboard_dispatcher_type == "raw":
@@ -683,18 +683,18 @@ def main(config: ReplayDeltaEEFIKConfig):
             t_start = time.monotonic()
             
             with telemetry.timer("total_loop"):
-                # 获取观测
+                # Get observation
                 with telemetry.timer("observe"):
                     obs = env.observe()
                     wbc_policy.set_observation(obs)
-                
+
                 t_now = time.monotonic()
-                
-                # 获取 command（通过累积 delta_eef 计算）
+
+                # Get command (calculated through cumulative delta_eef)
                 with telemetry.timer("get_command"):
                     replay_cmd = delta_eef_provider.get_command(robot_model, current_obs=obs)
-                
-                # 构建 wbc_goal
+
+                # Build wbc_goal
                 with telemetry.timer("policy_setup"):
                     if replay_cmd:
                         wbc_goal = replay_cmd.copy()
@@ -707,27 +707,27 @@ def main(config: ReplayDeltaEEFIKConfig):
                             "base_height_command": DEFAULT_BASE_HEIGHT,
                             "target_upper_body_pose": obs["q"][upper_body_indices],
                         }
-                    
+
                     wbc_goal["target_time"] = t_now + (1 / config.control_frequency)
                     wbc_goal["interpolation_garbage_collection_time"] = t_now - 2 * (
                         1 / config.control_frequency
                     )
                     wbc_policy.set_goal(wbc_goal)
-                
-                # 获取动作
+
+                # Get action
                 with telemetry.timer("policy_action"):
                     wbc_action = wbc_policy.get_action(time=t_now)
-                
-                # 如果禁用下半身，强制将下半身关节设置为 0
+
+                # If lower body disabled, force lower body joints to 0
                 if config.disable_lower_body:
                     lower_body_indices = robot_model.get_joint_group_indices("lower_body")
                     wbc_action["q"][lower_body_indices] = 0.0
-                
-                # 执行动作
+
+                # Execute action
                 with telemetry.timer("queue_action"):
                     env.queue_action(wbc_action)
-                
-                # 发布状态
+
+                # Publish status
                 with telemetry.timer("publish_status"):
                     policy_use_action = False
                     try:
@@ -747,9 +747,9 @@ def main(config: ReplayDeltaEEFIKConfig):
                         "timestamp": t_now,
                     }
                     joint_safety_status_pub.publish(joint_safety_status_msg)
-                    
+
                     if not joint_safety_ok:
-                        print("\n⚠️ Joint safety warning! Please check robot status")
+                        print("\nWarning: Joint safety warning! Please check robot status")
 
                 # Export data
                 msg = deepcopy(obs)

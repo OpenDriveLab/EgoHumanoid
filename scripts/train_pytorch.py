@@ -236,7 +236,7 @@ def load_checkpoint(model, optimizer, checkpoint_dir, device):
             load_model_compat(
                 model_to_load,
                 safetensors_path,
-                rename_fn=None,  # 若需要命名映射再启用 rename_fn
+                rename_fn=None,  # Enable if name mapping is needed rename_fn
                 extra_ties_fallback=PALIGEMMA_TIES_FALLBACK,
             )
             model_to_load = model_to_load.to(str(device))
@@ -474,7 +474,7 @@ def train_loop(config: _config.TrainConfig):
         load_model_compat(
             (model.module if isinstance(model, torch.nn.parallel.DistributedDataParallel) else model),
             model_path,
-            rename_fn=None,  # 若需要命名映射再启用 rename_fn
+            rename_fn=None,  # Enable if name mapping is needed rename_fn
             extra_ties_fallback=PALIGEMMA_TIES_FALLBACK,
         )
         # model_to_load = model_to_load.to(str(device))

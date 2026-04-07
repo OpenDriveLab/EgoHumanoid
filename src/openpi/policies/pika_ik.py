@@ -233,21 +233,21 @@ class Arm_IK:
 class C_PiperIK():
     def __init__(self):
         rospy.init_node('inverse_solution_node', anonymous=True)
-        # 创建Arm_IK实例
+        # Create Arm_IK instance
         self.arm_ik = Arm_IK()
-        
-        # 启动订阅线程
+
+        # Start subscription thread
         sub_pos_th = threading.Thread(target=self.SubPosThread, daemon=True)
         sub_pos_th.daemon = True
         sub_pos_th.start()
     
     def SubPosThread(self):
-        # 创建订阅者，监听PosCmd类型的消息
+        # Create subscriber, listen to PosCmd type messages
         rospy.Subscriber('pin_pos_cmd', PosCmd, self.pos_cmd_callback)
         rospy.spin()
 
     def pos_cmd_callback(self, msg):
-        # 获取PosCmd类型消息中的数据
+        # Get data from PosCmd type message
         x = msg.x
         y = msg.y
         z = msg.z
@@ -255,7 +255,7 @@ class C_PiperIK():
         pitch = msg.pitch
         yaw = msg.yaw
 
-        # 调用Arm_IK类的逆解函数
+        # Call Arm_IK class's inverse kinematics function
         self.arm_ik.get_ik_solution(x, y, z, roll, pitch, yaw)
 
 def key_listener():

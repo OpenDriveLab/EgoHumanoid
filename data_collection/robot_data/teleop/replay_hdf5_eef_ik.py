@@ -1,22 +1,22 @@
 """
-HDF5 EEF 回放器（IK 版本）- 真机版本
+HDF5 EEF Replay Player (IK Version) - Real Robot Version
 
-基于 replay_hdf5_real.py，但使用 IK 从 EEF 位姿计算关节角度
+Based on replay_hdf5_real.py, but uses IK to calculate joint angles from EEF poses
 
-与 replay_hdf5_real.py 的区别：
-- 读取数据集中的 action_eef（末端执行器位姿）
-- 使用 TeleopRetargetingIK 的 IK 求解器计算关节角度
-- 只控制上半身，底盘由默认值控制
+Differences from replay_hdf5_real.py:
+- Reads action_eef (end-effector poses) from dataset
+- Uses TeleopRetargetingIK's IK solver to calculate joint angles
+- Only controls upper body, base controlled by default values
 
-⚠️ 警告：此脚本用于控制真实机器人，请确保安全措施到位
+Warning: This script controls a real robot, ensure safety measures are in place
 
-使用方式：
-1. 运行脚本
-2. 按 ] 激活策略
-3. 按 p 进入准备阶段（缓慢移动到第一帧位置）
-4. 等待准备完成后，按 l 开始回放
+Usage:
+1. Run the script
+2. Press ] to activate policy
+3. Press p to enter preparation phase (slowly move to first frame position)
+4. Wait for preparation to complete, then press l to start replay
 
-使用示例：
+Usage examples:
     python decoupled_wbc/control/main/teleop/replay_hdf5_eef_ik.py --dataset-dir outputs/data_1224_0
     python decoupled_wbc/control/main/teleop/replay_hdf5_eef_ik.py --dataset-dir outputs/data_1224_0 --episode 0 --no-with-hands
     python decoupled_wbc/control/main/teleop/replay_hdf5_eef_ik.py --dataset-dir outputs/data_1224_0 --speed 0.5 --no-with-hands
@@ -69,37 +69,37 @@ from decoupled_wbc.control.utils.telemetry import Telemetry
 
 @dataclass
 class ReplayEEFIKConfig(ControlLoopConfig):
-    """EEF IK 回放配置，继承自 ControlLoopConfig"""
-    
+    """EEF IK replay configuration, inherits from ControlLoopConfig"""
+
     dataset_dir: str = "outputs/data_1224_0"
-    """数据集目录路径"""
-    
+    """Dataset directory path"""
+
     episode: Optional[int] = None
-    """要回放的 episode 索引，None 表示回放所有"""
-    
+    """Episode index to replay, None means replay all"""
+
     speed: float = 1.0
-    """回放速度倍率"""
-    
+    """Replay speed multiplier"""
+
     loop: bool = False
-    """是否循环回放"""
-    
-    # 真机默认设置
+    """Whether to loop replay"""
+
+    # Real robot default settings
     interface: str = "real"
-    """接口类型，真机使用 'real'"""
-    
+    """Interface type, real robot uses 'real'"""
+
     require_confirmation: bool = True
-    """是否需要确认才能开始"""
-    
+    """Whether confirmation is required to start"""
+
     preparation_duration: float = 3.0
-    """准备阶段持续时间（秒），手臂缓慢移动到第一帧位置的时间"""
+    """Preparation phase duration (seconds), time for arm to slowly move to first frame position"""
 
 
 class HDF5EEFProvider:
     """
-    从 HDF5 数据集提供 EEF 位姿，使用 IK 计算关节角度
-    
-    按 'p' 键进入准备阶段（缓慢移动到第一帧位置）
-    按 'l' 键开始回放
+    Provides EEF poses from HDF5 dataset, calculates joint angles using IK
+
+    Press 'p' key to enter preparation phase (slowly move to first frame position)
+    Press 'l' key to start replay
     """
     
     def __init__(
@@ -114,8 +114,8 @@ class HDF5EEFProvider:
         self.episodes = self._load_episodes(dataset_dir, episode)
         self.speed = speed
         self.preparation_duration = preparation_duration
-        
-        # 初始化 IK 求解器
+
+        # Initialize IK solver
         left_hand_ik_solver, right_hand_ik_solver = instantiate_g1_hand_ik_solver()
         self.retargeting_ik = TeleopRetargetingIK(
             robot_model=robot_model,
@@ -124,12 +124,12 @@ class HDF5EEFProvider:
             enable_visualization=False,
             body_active_joint_groups=["upper_body"],
         )
-        
-        # 获取手腕 frame 名称
+
+        # Get wrist frame names
         self.left_wrist_frame = robot_model.supplemental_info.hand_frame_names["left"]
         self.right_wrist_frame = robot_model.supplemental_info.hand_frame_names["right"]
-        
-        # 回放状态
+
+        # Replay state
         self.is_replaying = False
         self.is_preparing = False
         self.preparation_complete = False
@@ -137,23 +137,23 @@ class HDF5EEFProvider:
         self.current_frame_idx = 0
         self.last_frame_time = None
         self.frame_interval = None
-        
-        # 准备阶段相关
+
+        # Preparation phase related
         self.preparation_start_time = None
         self.preparation_start_upper_body = None
         self.preparation_target_upper_body = None
         self.preparation_target_wrist = None
-        
-        print(f"[HDF5 EEF] 已加载 {len(self.episodes)} 个 episode")
-        print(f"[HDF5 EEF] 回放速度: {speed}x")
-        print(f"[HDF5 EEF] 准备时间: {preparation_duration}s")
-        print(f"[HDF5 EEF] 按 'p' 键进入准备阶段（缓慢移动到第一帧）")
-        print(f"[HDF5 EEF] 按 'l' 键开始/暂停回放")
+
+        print(f"[HDF5 EEF] Loaded {len(self.episodes)} episodes")
+        print(f"[HDF5 EEF] Replay speed: {speed}x")
+        print(f"[HDF5 EEF] Preparation time: {preparation_duration}s")
+        print(f"[HDF5 EEF] Press 'p' key to enter preparation phase (slowly move to first frame)")
+        print(f"[HDF5 EEF] Press 'l' key to start/pause replay")
     
     def _load_episodes(self, dataset_dir: str, episode: Optional[int]) -> list:
-        """加载 episode 数据"""
+        """Load episode data"""
         if not os.path.exists(dataset_dir):
-            raise FileNotFoundError(f"数据目录不存在: {dataset_dir}")
+            raise FileNotFoundError(f"Data directory does not exist: {dataset_dir}")
         
         hdf5_files = sorted(glob.glob(os.path.join(dataset_dir, "episode_*.hdf5")))
         if len(hdf5_files) == 0:
@@ -161,7 +161,7 @@ class HDF5EEFProvider:
             if os.path.exists(single_file):
                 hdf5_files = [single_file]
             else:
-                raise FileNotFoundError(f"在 {dataset_dir} 中未找到 HDF5 文件")
+                raise FileNotFoundError(f"No HDF5 files found in {dataset_dir}")
         
         episodes = []
         for hdf5_file in hdf5_files:
@@ -172,68 +172,68 @@ class HDF5EEFProvider:
                         "fps": f.attrs.get("fps", 20),
                         "num_frames": f.attrs.get("num_frames", f["action_eef"].shape[0]),
                     }
-                    
-                    # 加载 EEF 位姿
+
+                    # Load EEF poses
                     if "action_eef" in f:
                         ep["eef_pose"] = np.array(f["action_eef"])
                     elif "observation_eef_state" in f:
                         ep["eef_pose"] = np.array(f["observation_eef_state"])
                     else:
-                        raise ValueError(f"在 {hdf5_file} 中未找到 action_eef 或 observation_eef_state")
-                    
-                    # 加载导航和高度命令（可选）
+                        raise ValueError(f"action_eef or observation_eef_state not found in {hdf5_file}")
+
+                    # Load navigation and height commands (optional)
                     if "teleop_navigate_command" in f:
                         ep["navigate_cmd"] = np.array(f["teleop_navigate_command"])
-                    
+
                     if "teleop_base_height_command" in f:
                         ep["base_height_command"] = np.array(f["teleop_base_height_command"])
-                    
+
                     episodes.append(ep)
-                    print(f"  已加载: {ep['file']} - {ep['num_frames']} 帧, {ep['fps']} FPS")
+                    print(f"  Loaded: {ep['file']} - {ep['num_frames']} frames, {ep['fps']} FPS")
             except Exception as e:
-                print(f"  [WARN] 加载 {hdf5_file} 失败: {e}")
-        
+                print(f"  [WARN] Loading {hdf5_file} failed: {e}")
+
         if episode is not None:
             if episode >= len(episodes):
-                raise ValueError(f"Episode {episode} 不存在，共有 {len(episodes)} 个")
+                raise ValueError(f"Episode {episode} does not exist, total {len(episodes)}")
             episodes = [episodes[episode]]
-        
+
         return episodes
     
     def _eef_to_transformation_matrix(self, eef_data: np.ndarray) -> dict:
         """
-        将 EEF 数据转换为变换矩阵字典
-        
+        Convert EEF data to transformation matrix dictionary
+
         Args:
             eef_data: (14,) [left: x,y,z,qw,qx,qy,qz, right: x,y,z,qw,qx,qy,qz]
-                     注意：四元数格式是 scalar_first=True，即 (w, x, y, z)
-        
+                     Note: quaternion format is scalar_first=True, i.e., (w, x, y, z)
+
         Returns:
             dict: {left_wrist_frame: T_left, right_wrist_frame: T_right}
         """
-        # 提取左右手数据
+        # Extract left and right hand data
         left_pos = eef_data[:3]
-        left_quat_scalar_first = eef_data[3:7]  # (qw, qx, qy, qz) - scalar_first 格式
+        left_quat_scalar_first = eef_data[3:7]  # (qw, qx, qy, qz) - scalar_first format
         right_pos = eef_data[7:10]
-        right_quat_scalar_first = eef_data[10:14]  # (qw, qx, qy, qz) - scalar_first 格式
-        
-        # 转换为 scipy 期望的格式 (x, y, z, w)
+        right_quat_scalar_first = eef_data[10:14]  # (qw, qx, qy, qz) - scalar_first format
+
+        # Convert to scipy expected format (x, y, z, w)
         # scalar_first (w, x, y, z) -> vector_first (x, y, z, w)
-        left_quat = np.array([left_quat_scalar_first[1], left_quat_scalar_first[2], 
+        left_quat = np.array([left_quat_scalar_first[1], left_quat_scalar_first[2],
                              left_quat_scalar_first[3], left_quat_scalar_first[0]])
-        right_quat = np.array([right_quat_scalar_first[1], right_quat_scalar_first[2], 
+        right_quat = np.array([right_quat_scalar_first[1], right_quat_scalar_first[2],
                               right_quat_scalar_first[3], right_quat_scalar_first[0]])
-        
-        # 转换为变换矩阵（直接使用，不应用额外的旋转）
-        # action_eef 中的数据已经是经过 WristsPreProcessor 处理后的数据，不需要额外的旋转
+
+        # Convert to transformation matrix (use directly, do not apply additional rotation)
+        # action_eef data has already been processed by WristsPreProcessor, no additional rotation needed
         T_left = np.eye(4)
         T_left[:3, 3] = left_pos
         T_left[:3, :3] = R.from_quat(left_quat).as_matrix()
-        
+
         T_right = np.eye(4)
         T_right[:3, 3] = right_pos
         T_right[:3, :3] = R.from_quat(right_quat).as_matrix()
-        
+
         return {
             self.left_wrist_frame: T_left,
             self.right_wrist_frame: T_right,
@@ -241,37 +241,37 @@ class HDF5EEFProvider:
     
     def _compute_upper_body_joints_from_eef(self, eef_data: np.ndarray) -> np.ndarray:
         """
-        从 EEF 位姿计算上半身关节角度
-        
-        使用与 TeleopPolicy 相同的方式：通过 set_goal() 和 get_action() 来维护状态连续性
-        这样可以确保 BodyIKSolver 的状态连续性（从上次的结果继续，而不是每次都重置）
-        
+        Calculate upper body joint angles from EEF pose
+
+        Uses the same approach as TeleopPolicy: through set_goal() and get_action() to maintain state continuity
+        This ensures BodyIKSolver's state continuity (continue from last result, not reset every time)
+
         Args:
-            eef_data: (14,) EEF 位姿
-        
+            eef_data: (14,) EEF pose
+
         Returns:
-            (N,) 上半身关节角度
+            (N,) Upper body joint angles
         """
-        # 转换为变换矩阵
+        # Convert to transformation matrix
         body_data = self._eef_to_transformation_matrix(eef_data)
-        
-        # 使用与 TeleopPolicy 相同的方式：set_goal() + get_action()
-        # 注意：left_hand_data 和 right_hand_data 传入 None（不使用手部 IK）
-        # _inverse_kinematics 中会检查 if is not None 来决定是否调用手部 IK solver
+
+        # Use the same approach as TeleopPolicy: set_goal() + get_action()
+        # Note: left_hand_data and right_hand_data passed as None (do not use hand IK)
+        # In _inverse_kinematics, check if is not None to decide whether to call hand IK solver
         ik_data = {
             "body_data": body_data,
-            "left_hand_data": None,  # type: ignore  # 不使用手部 IK
-            "right_hand_data": None,  # type: ignore  # 不使用手部 IK
+            "left_hand_data": None,  # type: ignore  # Do not use hand IK
+            "right_hand_data": None,  # type: ignore  # Do not use hand IK
         }
         self.retargeting_ik.set_goal(ik_data)
-        # get_action() 返回的是 numpy 数组（上半身关节角度）
-        # 注意：虽然类型标注是 dict[str, any]，但实际返回的是 numpy 数组
+        # get_action() returns a numpy array (upper body joint angles)
+        # Note: Although type annotation is dict[str, any], it actually returns a numpy array
         target_joints = np.array(self.retargeting_ik.get_action())  # type: ignore
-        
+
         return target_joints
     
     def handle_keyboard_button(self, key):
-        """处理键盘按键"""
+        """Handle keyboard input"""
         if key == "p":
             if not self.is_preparing and not self.is_replaying:
                 self.is_preparing = True
@@ -280,72 +280,72 @@ class HDF5EEFProvider:
                 self.preparation_start_upper_body = None
                 self.preparation_target_upper_body = None
                 self.preparation_target_wrist = None
-                print("\n[HDF5 EEF] 🔄 进入准备阶段：缓慢移动到第一帧位置...")
-                print(f"[HDF5 EEF] 准备时间: {self.preparation_duration}s，完成后按 'l' 开始回放")
+                print("\n[HDF5 EEF] 🔄 Entering preparation phase: slowly moving to first frame position...")
+                print(f"[HDF5 EEF] Preparation time: {self.preparation_duration}s, press 'l' to start replay after completion")
         elif key == "l":
             if self.is_preparing:
-                print("\n[HDF5 EEF] ⚠️ 准备阶段未完成，请等待完成后再按 'l'")
+                print("\n[HDF5 EEF] ⚠️ Preparation phase incomplete, please wait for completion before pressing 'l'")
                 return
-            
+
             if not self.preparation_complete and not self.is_replaying:
-                print("\n[HDF5 EEF] ⚠️ 请先按 'p' 完成准备阶段")
+                print("\n[HDF5 EEF] ⚠️ Please first press 'p' to complete preparation phase")
                 return
-            
+
             self.is_replaying = not self.is_replaying
             if self.is_replaying:
                 self.preparation_complete = False
-                print("\n[HDF5 EEF] ▶ 开始回放")
+                print("\n[HDF5 EEF] ▶ Starting replay")
                 self.current_frame_idx = 0
                 self.last_frame_time = time.time()
                 ep = self.episodes[self.current_episode_idx]
                 self.frame_interval = 1.0 / (ep["fps"] * self.speed)
             else:
-                print("\n[HDF5 EEF] ⏸ 暂停回放")
+                print("\n[HDF5 EEF] ⏸ Pausing replay")
     
     def get_command(self, robot_model, current_obs=None) -> Optional[dict]:
         """
-        获取当前帧的 command（通过 IK 计算）
+        Get current frame command (calculated through IK)
         """
         if len(self.episodes) == 0:
             return None
-        
-        # 准备阶段：缓慢移动到第一帧位置
+
+        # Preparation phase: slowly move to first frame position
         if self.is_preparing:
             if current_obs is None:
-                print("[HDF5 EEF] 警告: 准备阶段需要 current_obs，但未提供")
+                print("[HDF5 EEF] Warning: Preparation phase needs current_obs, but not provided")
                 return None
-            
+
             if self.preparation_start_time is None:
                 self.preparation_start_time = time.time()
-            
+
             now = time.time()
             elapsed = now - self.preparation_start_time
-            
-            # 首次调用，记录起始位置和目标位置
+
+            # First call, record starting position and target position
             if self.preparation_start_upper_body is None:
                 upper_body_indices = robot_model.get_joint_group_indices("upper_body")
                 self.preparation_start_upper_body = current_obs["q"][upper_body_indices].copy()
-                
+
                 ep = self.episodes[self.current_episode_idx]
-                # 从第一帧 EEF 计算目标关节角度
+                # Calculate target joint angles from first frame EEF
                 first_frame_eef = ep["eef_pose"][0]
                 self.preparation_target_upper_body = self._compute_upper_body_joints_from_eef(first_frame_eef)
                 self.preparation_target_wrist = first_frame_eef.copy()
-                
-                print(f"[HDF5 EEF] 开始位置已记录，目标位置已设置")
-            
-            # 计算插值进度
+
+                print(f"[HDF5 EEF] Starting position recorded, target position set")
+
+            # Calculate interpolation progress
             if elapsed >= self.preparation_duration:
                 progress = 1.0
                 self.is_preparing = False
                 self.preparation_complete = True
-                print(f"\n[HDF5 EEF] ✓ 准备完成！按 'l' 开始回放")
+                print(f"\n[HDF5 EEF] ✓ Preparation complete! Press 'l' to start replay")
             else:
                 t = elapsed / self.preparation_duration
                 progress = t * t * (3.0 - 2.0 * t)  # smoothstep
-            
-            # 插值上臂位置
-            if (self.preparation_start_upper_body is not None and 
+
+            # Interpolate upper arm position
+            if (self.preparation_start_upper_body is not None and
                 self.preparation_target_upper_body is not None):
                 interp_upper_body = (
                     self.preparation_start_upper_body * (1 - progress) +
@@ -354,23 +354,23 @@ class HDF5EEFProvider:
             else:
                 upper_body_indices = robot_model.get_joint_group_indices("upper_body")
                 interp_upper_body = current_obs["q"][upper_body_indices]
-            
+
             cmd = {
                 "target_upper_body_pose": interp_upper_body,
-                "wrist_pose": self.preparation_target_wrist,  # 使用第一帧的手腕位置
+                "wrist_pose": self.preparation_target_wrist,  # Use first frame wrist position
                 "navigate_cmd": DEFAULT_NAV_CMD,
                 "base_height_command": DEFAULT_BASE_HEIGHT,
             }
-            
+
             if int(elapsed * 10) % 10 == 0:
-                print(f"\r[HDF5 EEF] 准备中... {elapsed:.1f}/{self.preparation_duration:.1f}s ({progress*100:.1f}%)", 
+                print(f"\r[HDF5 EEF] Preparing... {elapsed:.1f}/{self.preparation_duration:.1f}s ({progress*100:.1f}%)",
                       end="", flush=True)
-            
+
             return cmd
-        
-        # 准备完成，等待开始回放：持续发送第一帧命令
+
+        # Preparation complete, waiting to start replay: continuously send first frame command
         if self.preparation_complete and not self.is_replaying:
-            if (self.preparation_target_upper_body is not None and 
+            if (self.preparation_target_upper_body is not None and
                 self.preparation_target_wrist is not None):
                 cmd = {
                     "target_upper_body_pose": self.preparation_target_upper_body,
@@ -379,55 +379,55 @@ class HDF5EEFProvider:
                     "base_height_command": DEFAULT_BASE_HEIGHT,
                 }
                 return cmd
-        
-        # 回放阶段
+
+        # Replay phase
         if not self.is_replaying:
             return None
-        
-        # 检查是否需要推进到下一帧
+
+        # Check if need to advance to next frame
         now = time.time()
         if self.last_frame_time is not None and self.frame_interval is not None:
             if now - self.last_frame_time >= self.frame_interval:
                 self.current_frame_idx += 1
                 self.last_frame_time = now
-        
+
         ep = self.episodes[self.current_episode_idx]
-        
-        # 检查是否当前 episode 结束
+
+        # Check if current episode finished
         if self.current_frame_idx >= ep["num_frames"]:
             self.current_frame_idx = 0
             self.current_episode_idx += 1
-            
+
             if self.current_episode_idx >= len(self.episodes):
-                print("\n[HDF5 EEF] ✓ 所有 episode 回放完成")
+                print("\n[HDF5 EEF] ✓ All episodes replay complete")
                 self.is_replaying = False
                 self.current_episode_idx = 0
                 return None
             else:
                 ep = self.episodes[self.current_episode_idx]
                 self.frame_interval = 1.0 / (ep["fps"] * self.speed)
-                print(f"\n[HDF5 EEF] 切换到 Episode {self.current_episode_idx + 1}/{len(self.episodes)}")
-        
-        # 获取当前帧的 EEF
+                print(f"\n[HDF5 EEF] Switching to Episode {self.current_episode_idx + 1}/{len(self.episodes)}")
+
+        # Get current frame EEF
         frame_idx = self.current_frame_idx
         eef_data = ep["eef_pose"][frame_idx]
-        
-        # 使用 IK 计算上半身关节角度
-        # 注意：使用 set_goal() + get_action() 方式会自动维护 BodyIKSolver 的状态连续性
+
+        # Use IK to calculate upper body joint angles
+        # Note: Using set_goal() + get_action() approach automatically maintains BodyIKSolver state continuity
         upper_body_joints = self._compute_upper_body_joints_from_eef(eef_data)
-        
-        # 构建 command
+
+        # Build command
         cmd = {
             "target_upper_body_pose": upper_body_joints,
             "wrist_pose": eef_data,
             "navigate_cmd": ep.get("navigate_cmd", DEFAULT_NAV_CMD)[frame_idx] if "navigate_cmd" in ep else DEFAULT_NAV_CMD,
             "base_height_command": ep.get("base_height_command", DEFAULT_BASE_HEIGHT)[frame_idx] if "base_height_command" in ep else DEFAULT_BASE_HEIGHT,
         }
-        
+
         if isinstance(cmd["base_height_command"], np.ndarray):
             cmd["base_height_command"] = cmd["base_height_command"].item() if cmd["base_height_command"].size == 1 else cmd["base_height_command"][0]
-        
-        # 打印进度
+
+        # Print progress
         if frame_idx % 20 == 0:
             progress = (frame_idx + 1) / ep["num_frames"] * 100
             nav = cmd["navigate_cmd"]
@@ -437,73 +437,73 @@ class HDF5EEFProvider:
                 f"Nav: [{nav[0]:+.2f}, {nav[1]:+.2f}, {nav[2]:+.2f}]",
                 end="", flush=True
             )
-        
+
         return cmd
 
 
 def print_safety_warning():
-    """打印安全警告"""
+    """Print safety warning"""
     print("\n" + "!" * 70)
     print("!" + " " * 68 + "!")
-    print("!" + "  ⚠️  警告：即将在真机上回放 EEF 数据（IK 版本）！".center(50) + "!")
+    print("!" + "  ⚠️  WARNING: About to replay EEF data on real robot (IK version)!".center(68) + "!")
     print("!" + " " * 68 + "!")
     print("!" * 70)
     print("""
-请确保：
-  1. 机器人周围无障碍物和人员
-  2. 急停开关在手边且可用
-  3. EEF 数据的动作幅度在安全范围内
-  4. 回放速度设置合理
-  5. 你已熟悉如何紧急停止
-  
-紧急停止方式：
-  - 按键盘 'o' 停用策略
-  - 按物理急停按钮
-  - Ctrl+C 终止程序
+Please ensure:
+  1. No obstacles or personnel around the robot
+  2. Emergency stop switch is within reach and functional
+  3. EEF data motion amplitude is within safe range
+  4. Replay speed is set appropriately
+  5. You are familiar with how to perform emergency stop
+
+Emergency stop methods:
+  - Press keyboard 'o' to deactivate policy
+  - Press physical emergency stop button
+  - Ctrl+C to terminate program
 """)
     print("!" * 70 + "\n")
 
 
 def main(config: ReplayEEFIKConfig):
-    # 安全确认
+    # Safety confirmation
     print_safety_warning()
-    
+
     if config.require_confirmation:
-        confirm = input("确认在真机上运行回放？输入 'yes' 继续: ").strip().lower()
+        confirm = input("Confirm running replay on real robot? Enter 'yes' to continue: ").strip().lower()
         if confirm != "yes":
-            print("已取消")
+            print("Cancelled")
             return
-    
+
     ros_manager = ROSManager(node_name="ReplayEEFIKControlLoop")
     node = ros_manager.node
-    
-    # 启动配置服务器
+
+    # Start configuration server
     ROSServiceServer(ROBOT_CONFIG_TOPIC, config.to_dict())
-    
-    # 状态发布器
+
+    # Status publishers
     data_exp_pub = ROSMsgPublisher(STATE_TOPIC_NAME)
     lower_body_policy_status_pub = ROSMsgPublisher(LOWER_BODY_POLICY_STATUS_TOPIC)
     joint_safety_status_pub = ROSMsgPublisher(JOINT_SAFETY_STATUS_TOPIC)
-    
+
     telemetry = Telemetry(window_size=100)
-    
+
     waist_location = "lower_and_upper_body" if config.enable_waist else "lower_body"
     robot_model = instantiate_g1_robot_model(
         waist_location=waist_location, high_elbow_pose=config.high_elbow_pose
     )
-    
+
     wbc_config = config.load_wbc_yaml()
-    
+
     env = G1Env(
         env_name=config.env_name,
         robot_model=robot_model,
         config=wbc_config,
         wbc_version=config.wbc_version,
     )
-    
+
     wbc_policy = get_wbc_policy("g1", robot_model, wbc_config, config.upper_body_joint_speed)
-    
-    # EEF 提供器（包含 IK 求解器）
+
+    # EEF provider (includes IK solver)
     eef_provider = HDF5EEFProvider(
         dataset_dir=config.dataset_dir,
         robot_model=robot_model,
@@ -511,8 +511,8 @@ def main(config: ReplayEEFIKConfig):
         speed=config.speed,
         preparation_duration=config.preparation_duration,
     )
-    
-    # 键盘调度器
+
+    # Keyboard dispatcher
     keyboard_listener_pub = KeyboardListenerPublisher()
     keyboard_estop = KeyboardEStop()
     if config.keyboard_dispatcher_type == "raw":
@@ -529,44 +529,44 @@ def main(config: ReplayEEFIKConfig):
     dispatcher.register(keyboard_estop)
     dispatcher.register(eef_provider)
     dispatcher.start()
-    
+
     rate = node.create_rate(config.control_frequency)
-    
+
     print("\n" + "=" * 60)
-    print("HDF5 EEF IK 回放控制循环")
+    print("HDF5 EEF IK Replay Control Loop")
     print("=" * 60)
-    print(f"数据集: {config.dataset_dir}")
-    print(f"回放速度: {config.speed}x")
+    print(f"Dataset: {config.dataset_dir}")
+    print(f"Replay speed: {config.speed}x")
     print("-" * 60)
-    print("操作步骤:")
-    print("  1. 按 ] 激活 WBC 策略")
-    print("  2. 按 p 进入准备阶段（缓慢移动到第一帧位置）")
-    print("  3. 等待准备完成后，按 l 开始/暂停回放")
+    print("Operation steps:")
+    print("  1. Press ] to activate WBC policy")
+    print("  2. Press p to enter preparation phase (slowly move to first frame position)")
+    print("  3. After preparation completes, press l to start/pause replay")
     print("-" * 60)
-    print("安全按键:")
-    print("  o - 停用策略（紧急时使用）")
-    print("  Ctrl+C - 退出程序")
+    print("Safety keys:")
+    print("  o - Deactivate policy (use in emergency)")
+    print("  Ctrl+C - Exit program")
     print("=" * 60 + "\n")
-    
+
     last_teleop_cmd = None
-    
+
     try:
         while ros_manager.ok():
             t_start = time.monotonic()
-            
+
             with telemetry.timer("total_loop"):
-                # 获取观测
+                # Get observation
                 with telemetry.timer("observe"):
                     obs = env.observe()
                     wbc_policy.set_observation(obs)
-                
+
                 t_now = time.monotonic()
-                
-                # 获取 command（通过 IK 计算）
+
+                # Get command (calculated through IK)
                 with telemetry.timer("get_command"):
                     replay_cmd = eef_provider.get_command(robot_model, current_obs=obs)
-                
-                # 构建 wbc_goal
+
+                # Build wbc_goal
                 with telemetry.timer("policy_setup"):
                     if replay_cmd:
                         wbc_goal = replay_cmd.copy()
@@ -579,22 +579,22 @@ def main(config: ReplayEEFIKConfig):
                             "base_height_command": DEFAULT_BASE_HEIGHT,
                             "target_upper_body_pose": obs["q"][upper_body_indices],
                         }
-                    
+
                     wbc_goal["target_time"] = t_now + (1 / config.control_frequency)
                     wbc_goal["interpolation_garbage_collection_time"] = t_now - 2 * (
                         1 / config.control_frequency
                     )
                     wbc_policy.set_goal(wbc_goal)
-                
-                # 获取动作
+
+                # Get action
                 with telemetry.timer("policy_action"):
                     wbc_action = wbc_policy.get_action(time=t_now)
-                
-                # 执行动作
+
+                # Execute action
                 with telemetry.timer("queue_action"):
                     env.queue_action(wbc_action)
-                
-                # 发布状态
+
+                # Publish status
                 with telemetry.timer("publish_status"):
                     policy_use_action = False
                     try:
@@ -604,26 +604,26 @@ def main(config: ReplayEEFIKConfig):
                             )
                     except (AttributeError, TypeError):
                         policy_use_action = False
-                    
+
                     policy_status_msg = {"use_policy_action": policy_use_action, "timestamp": t_now}
                     lower_body_policy_status_pub.publish(policy_status_msg)
-                    
+
                     joint_safety_ok = env.get_joint_safety_status()
                     joint_safety_status_msg = {
                         "joint_safety_ok": joint_safety_ok,
                         "timestamp": t_now,
                     }
                     joint_safety_status_pub.publish(joint_safety_status_msg)
-                    
+
                     if not joint_safety_ok:
-                        print("\n⚠️ 关节安全警告！请检查机器人状态")
-                
-                # 导出数据
+                        print("\n⚠️ Joint safety warning! Please check robot status")
+
+                # Export data
                 msg = deepcopy(obs)
                 for key in list(obs.keys()):
                     if key.endswith("_image"):
                         del msg[key]
-                
+
                 if last_teleop_cmd:
                     msg.update({
                         "action": wbc_action["q"],
@@ -640,26 +640,26 @@ def main(config: ReplayEEFIKConfig):
                         },
                     })
                 data_exp_pub.publish(msg)
-                
+
                 end_time = time.monotonic()
-            
+
             rate.sleep()
-            
+
             if config.verbose_timing:
                 telemetry.log_timing_info(context="Replay EEF IK Control Loop", threshold=0.0)
             elif (end_time - t_start) > (1 / config.control_frequency):
                 telemetry.log_timing_info(context="Replay EEF IK Control Loop Missed", threshold=0.001)
-    
+
     except ros_manager.exceptions() as e:
         print(f"\nROSManager interrupted: {e}")
     except KeyboardInterrupt:
-        print("\n用户中断")
+        print("\nUser interrupted")
     finally:
         print("\nCleaning up...")
         dispatcher.stop()
         ros_manager.shutdown()
         env.close()
-        print("已安全退出")
+        print("Exited safely")
 
 
 if __name__ == "__main__":

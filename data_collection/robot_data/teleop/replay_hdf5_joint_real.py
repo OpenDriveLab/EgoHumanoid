@@ -1,20 +1,20 @@
 """
-HDF5 数据回放器 - 真机版本
+HDF5 Data Replay - Real Robot Version
 
-基于 run_g1_control_loop.py 的结构，在真机上回放 HDF5 数据集
+Based on run_g1_control_loop.py structure, replays HDF5 dataset on real robot
 
-⚠️ 警告：此脚本用于控制真实机器人，请确保：
-   1. 机器人周围无障碍物
-   2. 急停开关在手边
-   3. 数据集速度和幅度在安全范围内
+⚠️ Warning: This script controls a real robot, ensure:
+   1. No obstacles around the robot
+   2. Emergency stop within reach
+   3. Dataset speed and amplitude within safe range
 
-使用方式：
-1. 运行脚本
-2. 按 ] 激活策略
-3. 按 p 开始回放数据集
-4. 按 o 可以随时停用策略
+Usage:
+1. Run script
+2. Press ] to activate policy
+3. Press p to start replaying dataset
+4. Press o to deactivate policy anytime
 
-使用示例：
+Usage examples:
     python replay_hdf5_real.py --dataset-dir outputs/data_1224_0
     python replay_hdf5_real.py --dataset-dir outputs/data_1224_0 --episode 0
     python replay_hdf5_real.py --dataset-dir outputs/data_1224_0 --speed 0.5
@@ -61,70 +61,70 @@ from decoupled_wbc.control.utils.telemetry import Telemetry
 
 @dataclass
 class ReplayRealConfig(ControlLoopConfig):
-    """真机回放配置，继承自 ControlLoopConfig"""
+    """Real robot replay config, inherits from ControlLoopConfig"""
     
     dataset_dir: str = "outputs/data_1224_0"
-    """数据集目录路径"""
+    """Dataset directory path"""
     
     episode: Optional[int] = None
-    """要回放的 episode 索引，None 表示回放所有"""
+    """Episode index to replay, None means replay all"""
     
     speed: float = 1.0
-    """回放速度倍率（真机默认 0.5x 更安全）"""
+    """Replay speed multiplier (default 0.5x safer for real robot)"""
     
     loop: bool = False
-    """是否循环回放"""
+    """Whether to loop replay"""
     
-    # 真机默认设置
+    # Real robot default settings
     interface: str = "real"
-    """接口类型，真机使用 'real'"""
+    """Interface type, real robot uses 'real'"""
     
     require_confirmation: bool = True
-    """是否需要确认才能开始"""
+    """Whether confirmation required to start"""
     
     preparation_duration: float = 3.0
-    """准备阶段持续时间（秒），手臂缓慢移动到第一帧位置的时间"""
+    """Preparation phase duration (seconds), time for arm to slowly move to first frame position"""
 
 
 class HDF5CommandProvider:
     """
-    从 HDF5 数据集提供 command，替代 ROS 订阅
+    Provide command from HDF5 dataset, replacing ROS subscription
     
-    按 'p' 键进入准备阶段（缓慢移动到第一帧位置）
-    按 'l' 键开始回放
+    Press 'p' key to enter preparation phase (slowly move to first frame position)
+    Press 'l' key to start replay
     """
     
     def __init__(self, dataset_dir: str, episode: Optional[int] = None, speed: float = 1.0,
                  preparation_duration: float = 3.0):
         self.episodes = self._load_episodes(dataset_dir, episode)
         self.speed = speed
-        self.preparation_duration = preparation_duration  # 准备阶段持续时间（秒）
-        
-        # 回放状态
+        self.preparation_duration = preparation_duration  # Preparation phase duration (seconds)
+
+        # Replay state
         self.is_replaying = False
-        self.is_preparing = False  # 准备阶段（缓慢移动到第一帧）
-        self.preparation_complete = False  # 准备阶段完成，等待开始回放
+        self.is_preparing = False  # Preparation phase (slowly move to first frame)
+        self.preparation_complete = False  # Preparation phase complete, waiting to start replay
         self.current_episode_idx = 0
         self.current_frame_idx = 0
         self.last_frame_time = None
         self.frame_interval = None
-        
-        # 准备阶段相关
+
+        # Preparation phase related
         self.preparation_start_time = None
-        self.preparation_start_upper_body = None  # 准备开始时的上臂位置
-        self.preparation_target_upper_body = None  # 第一帧的目标上臂位置
-        self.preparation_target_wrist = None  # 第一帧的目标手腕位置
+        self.preparation_start_upper_body = None  # Upper arm position at preparation start
+        self.preparation_target_upper_body = None  # Target upper arm position for first frame
+        self.preparation_target_wrist = None  # Target wrist position for first frame
         
-        print(f"[HDF5] 已加载 {len(self.episodes)} 个 episode")
-        print(f"[HDF5] 回放速度: {speed}x")
-        print(f"[HDF5] 准备时间: {preparation_duration}s")
-        print(f"[HDF5] 按 'p' 键进入准备阶段（缓慢移动到第一帧）")
-        print(f"[HDF5] 按 'l' 键开始/暂停回放")
+        print(f"[HDF5] Loaded {len(self.episodes)} episodes")
+        print(f"[HDF5] Replay speed: {speed}x")
+        print(f"[HDF5] Preparation time: {preparation_duration}s")
+        print(f"[HDF5] Press 'p' key to enter preparation phase (slowly move to first frame)")
+        print(f"[HDF5] Press 'l' key to start/pause replay")
     
     def _load_episodes(self, dataset_dir: str, episode: Optional[int]) -> list:
-        """加载 episode 数据"""
+        """Load episode data"""
         if not os.path.exists(dataset_dir):
-            raise FileNotFoundError(f"数据目录不存在: {dataset_dir}")
+            raise FileNotFoundError(f"Data directory does not exist: {dataset_dir}")
         
         hdf5_files = sorted(glob.glob(os.path.join(dataset_dir, "episode_*.hdf5")))
         if len(hdf5_files) == 0:
@@ -132,7 +132,7 @@ class HDF5CommandProvider:
             if os.path.exists(single_file):
                 hdf5_files = [single_file]
             else:
-                raise FileNotFoundError(f"在 {dataset_dir} 中未找到 HDF5 文件")
+                raise FileNotFoundError(f"No HDF5 files found in {dataset_dir}")
         
         episodes = []
         for hdf5_file in hdf5_files:
@@ -143,8 +143,8 @@ class HDF5CommandProvider:
                         "fps": f.attrs.get("fps", 20),
                         "num_frames": f.attrs.get("num_frames", len(f["observation_state"])),
                     }
-                    
-                    # 加载控制指令
+
+                    # Load control commands
                     if "action_eef" in f:
                         ep["wrist_pose"] = np.array(f["action_eef"])
                     elif "observation_eef_state" in f:
@@ -160,42 +160,42 @@ class HDF5CommandProvider:
                         ep["observation_state"] = np.array(f["observation_state"])
                     
                     episodes.append(ep)
-                    print(f"  已加载: {ep['file']} - {ep['num_frames']} 帧, {ep['fps']} FPS")
+                    print(f"  Loaded: {ep['file']} - {ep['num_frames']} frames, {ep['fps']} FPS")
             except Exception as e:
-                print(f"  [WARN] 加载 {hdf5_file} 失败: {e}")
+                print(f"  [WARN] Loading {hdf5_file} failed: {e}")
         
         if episode is not None:
             if episode >= len(episodes):
-                raise ValueError(f"Episode {episode} 不存在，共有 {len(episodes)} 个")
+                raise ValueError(f"Episode {episode} does not exist, total {len(episodes)} ")
             episodes = [episodes[episode]]
         
         return episodes
     
     def _interpolate_wrist_pose(self, start_pose: np.ndarray, target_pose: np.ndarray, t: float) -> np.ndarray:
         """
-        插值手腕位姿（左右手各 7 维: [x, y, z, qx, qy, qz, qw]）
+        Interpolate wrist pose (7 dims each for left/right: [x, y, z, qx, qy, qz, qw])
         
-        使用 SLERP 插值四元数
+        Use SLERP to interpolate quaternions
         """
         result = np.zeros_like(start_pose)
         
-        # 处理左右手
+        # Process left and right hands
         for hand_idx in range(2):
             start_idx = hand_idx * 7
             end_idx = start_idx + 7
             
-            # 位置（线性插值）
+            # Position (linear interpolation)
             start_pos = start_pose[start_idx:start_idx + 3]
             target_pos = target_pose[start_idx:start_idx + 3]
             result[start_idx:start_idx + 3] = start_pos * (1 - t) + target_pos * t
             
-            # 四元数（简单线性插值后归一化，对于准备阶段足够）
+            # Quaternion (simple linear interpolation then normalize, sufficient for preparation phase)
             start_quat = start_pose[start_idx + 3:end_idx]  # (qx, qy, qz, qw)
             target_quat = target_pose[start_idx + 3:end_idx]
             
-            # 简单的线性插值（然后归一化）
+            # Simple linear interpolation (then normalize)
             interp_quat = start_quat * (1 - t) + target_quat * t
-            # 归一化
+            # Normalize
             norm = np.linalg.norm(interp_quat)
             if norm > 1e-6:
                 interp_quat = interp_quat / norm
@@ -204,120 +204,120 @@ class HDF5CommandProvider:
         return result
     
     def handle_keyboard_button(self, key):
-        """处理键盘按键"""
+        """Handle keyboard input"""
         if key == "p":
-            # 进入准备阶段
+            # Enter preparation phase
             if not self.is_preparing and not self.is_replaying:
                 self.is_preparing = True
-                self.preparation_complete = False  # 重置准备完成标志
+                self.preparation_complete = False  # Reset preparation complete flag
                 self.preparation_start_time = time.time()
-                # 重置准备状态变量
+                # Reset preparation state variables
                 self.preparation_start_upper_body = None
                 self.preparation_start_wrist = None
                 self.preparation_target_upper_body = None
                 self.preparation_target_wrist = None
-                print("\n[HDF5] 🔄 进入准备阶段：缓慢移动到第一帧位置...")
-                print(f"[HDF5] 准备时间: {self.preparation_duration}s，完成后按 'l' 开始回放")
+                print("\n[HDF5] 🔄 Entering preparation phase: slowly moving to first frame position...")
+                print(f"[HDF5] Preparation time: {self.preparation_duration}s, press 'l' to start replay after completion")
         elif key == "l":
-            # 开始/暂停回放
+            # Start/pause replay
             if self.is_preparing:
-                print("\n[HDF5] ⚠️ 准备阶段未完成，请等待完成后再按 'l'")
+                print("\n[HDF5] ⚠️ Preparation phase incomplete, please wait for completion before pressing 'l'")
                 return
-            
+
             if not self.preparation_complete and not self.is_replaying:
-                print("\n[HDF5] ⚠️ 请先按 'p' 完成准备阶段")
+                print("\n[HDF5] ⚠️ Please first press 'p' to complete preparation phase")
                 return
-            
+
             self.is_replaying = not self.is_replaying
             if self.is_replaying:
-                self.preparation_complete = False  # 开始回放后清除准备完成标志
-                print("\n[HDF5] ▶ 开始回放")
-                self.current_frame_idx = 0  # 重置到第一帧
+                self.preparation_complete = False  # Clear preparation complete flag after starting replay
+                print("\n[HDF5] ▶ Starting replay")
+                self.current_frame_idx = 0  # Reset to first frame
                 self.last_frame_time = time.time()
                 ep = self.episodes[self.current_episode_idx]
                 self.frame_interval = 1.0 / (ep["fps"] * self.speed)
             else:
-                print("\n[HDF5] ⏸ 暂停回放")
+                print("\n[HDF5] ⏸ Pausing replay")
     
     def get_command(self, robot_model, current_obs=None) -> Optional[dict]:
         """
-        获取当前帧的 command
-        
+        Get current frame command
+
         Args:
-            robot_model: 机器人模型
-            current_obs: 当前观测（用于准备阶段获取当前手臂位置）
-        
-        返回 None 表示使用默认 command（未开始回放或回放结束）
-        返回 dict 表示数据集中的 command 或准备阶段的插值 command
+            robot_model: Robot model
+            current_obs: Current observation (used to get current arm position during preparation phase)
+
+        Returns None to use default command (not started replay or replay finished)
+        Returns dict for command from dataset or interpolated command from preparation phase
         """
         if len(self.episodes) == 0:
             return None
-        
-        # 准备阶段：缓慢移动到第一帧位置
+
+        # Preparation phase: slowly move to first frame position
         if self.is_preparing:
             if current_obs is None:
-                print("[HDF5] 警告: 准备阶段需要 current_obs，但未提供")
+                print("[HDF5] Warning: Preparation phase needs current_obs, but not provided")
                 return None
-            
+
             if self.preparation_start_time is None:
                 self.preparation_start_time = time.time()
-            
+
             now = time.time()
             elapsed = now - self.preparation_start_time
-            
-            # 首次调用，记录起始位置和目标位置
+
+            # First call, record starting position and target position
             if self.preparation_start_upper_body is None:
                 upper_body_indices = robot_model.get_joint_group_indices("upper_body")
                 self.preparation_start_upper_body = current_obs["q"][upper_body_indices].copy()
-                
+
                 ep = self.episodes[self.current_episode_idx]
                 if "observation_state" in ep:
                     self.preparation_target_upper_body = ep["observation_state"][0][upper_body_indices].copy()
                 else:
-                    # 如果没有观测数据，使用当前位置
+                    # If no observation data, use current position
                     self.preparation_target_upper_body = self.preparation_start_upper_body.copy()
-                
-                # 记录第一帧的手腕位置
+
+                # Record first frame wrist position
                 if "wrist_pose" in ep:
                     self.preparation_target_wrist = ep["wrist_pose"][0].copy()
                 else:
                     self.preparation_target_wrist = np.array(DEFAULT_WRIST_POSE).copy()
-                
-                # 记录起始手腕位置（从当前观测获取）
+
+                # Record starting wrist position (from current observation)
                 self.preparation_start_wrist = current_obs.get("wrist_pose", np.array(DEFAULT_WRIST_POSE)).copy()
-                
-                print(f"[HDF5] 开始位置已记录，目标位置已设置")
-            
-            # 计算插值进度（使用平滑曲线）
+
+                print(f"[HDF5] Starting position recorded, target position set")
+
+            # Calculate interpolation progress (using smooth curve)
             if elapsed >= self.preparation_duration:
-                # 准备完成
+                # Preparation complete
                 progress = 1.0
                 self.is_preparing = False
-                self.preparation_complete = True  # 标记准备完成
-                print(f"\n[HDF5] ✓ 准备完成！按 'l' 开始回放")
+                self.preparation_complete = True  # Mark preparation complete
+                print(f"\n[HDF5] ✓ Preparation complete! Press 'l' to start replay")
             else:
-                # 使用平滑插值（ease-in-out）
+                # Use smooth interpolation (ease-in-out)
                 t = elapsed / self.preparation_duration
                 progress = t * t * (3.0 - 2.0 * t)  # smoothstep
-            
-            # 插值上臂位置
+
+            # Interpolate upper arm position
             upper_body_indices = robot_model.get_joint_group_indices("upper_body")
-            if (self.preparation_start_upper_body is not None and 
+            if (self.preparation_start_upper_body is not None and
                 self.preparation_target_upper_body is not None):
                 interp_upper_body = (
                     self.preparation_start_upper_body * (1 - progress) +
                     self.preparation_target_upper_body * progress
                 )
             else:
-                # 如果还没初始化，使用目标位置
+                # If not initialized yet, use target position
                 interp_upper_body = (
-                    self.preparation_target_upper_body 
-                    if self.preparation_target_upper_body is not None 
+                    self.preparation_target_upper_body
+                    if self.preparation_target_upper_body is not None
                     else current_obs["q"][upper_body_indices]
                 )
-            
-            # 插值手腕位置（使用 SLERP 处理四元数）
-            if (self.preparation_start_wrist is not None and 
+
+            # Interpolate wrist position (using SLERP for quaternions)
+            if (self.preparation_start_wrist is not None and
                 self.preparation_target_wrist is not None):
                 interp_wrist = self._interpolate_wrist_pose(
                     self.preparation_start_wrist,
@@ -325,28 +325,28 @@ class HDF5CommandProvider:
                     progress
                 )
             else:
-                # 如果还没初始化，使用目标位置
+                # If not initialized yet, use target position
                 interp_wrist = self.preparation_target_wrist if self.preparation_target_wrist is not None else np.array(DEFAULT_WRIST_POSE)
-            
-            # 构建 command（只移动上臂和手腕，其他保持默认）
+
+            # Build command (only move upper arm and wrist, keep others default)
             cmd = {
                 "target_upper_body_pose": interp_upper_body,
                 "wrist_pose": interp_wrist,
-                "navigate_cmd": DEFAULT_NAV_CMD,  # 准备阶段不移动底盘
+                "navigate_cmd": DEFAULT_NAV_CMD,  # Do not move base during preparation phase
                 "base_height_command": DEFAULT_BASE_HEIGHT,
             }
-            
-            # 打印进度
-            if int(elapsed * 10) % 10 == 0:  # 每0.1秒打印一次
-                print(f"\r[HDF5] 准备中... {elapsed:.1f}/{self.preparation_duration:.1f}s ({progress*100:.1f}%)", 
+
+            # Print progress
+            if int(elapsed * 10) % 10 == 0:  # Print every 0.1 seconds
+                print(f"\r[HDF5] Preparing... {elapsed:.1f}/{self.preparation_duration:.1f}s ({progress*100:.1f}%)",
                       end="", flush=True)
-            
+
             return cmd
-        
-        # 准备完成，等待开始回放：持续发送第一帧命令
+
+        # Preparation complete, waiting to start replay: continuously send first frame command
         if self.preparation_complete and not self.is_replaying:
-            # 使用准备阶段已经设置好的目标位置
-            if (self.preparation_target_upper_body is not None and 
+            # Use target position already set during preparation phase
+            if (self.preparation_target_upper_body is not None and
                 self.preparation_target_wrist is not None):
                 cmd = {
                     "target_upper_body_pose": self.preparation_target_upper_body,
@@ -356,7 +356,7 @@ class HDF5CommandProvider:
                 }
                 return cmd
             else:
-                # 如果目标位置未设置（不应该发生），使用默认值
+                # If target position not set (should not happen), use default value
                 upper_body_indices = robot_model.get_joint_group_indices("upper_body")
                 cmd = {
                     "target_upper_body_pose": current_obs["q"][upper_body_indices] if current_obs else robot_model.get_default_q()[upper_body_indices],
@@ -365,41 +365,41 @@ class HDF5CommandProvider:
                     "base_height_command": DEFAULT_BASE_HEIGHT,
                 }
                 return cmd
-        
-        # 回放阶段
+
+        # Replay phase
         if not self.is_replaying:
             return None
-        
-        # 检查是否需要推进到下一帧
+
+        # Check if need to advance to next frame
         now = time.time()
         if self.last_frame_time is not None and self.frame_interval is not None:
             if now - self.last_frame_time < self.frame_interval:
-                # 还没到下一帧的时间，返回当前帧的 command
+                # Not time for next frame yet, return current frame command
                 pass
             else:
-                # 推进到下一帧
+                # Advance to next frame
                 self.current_frame_idx += 1
                 self.last_frame_time = now
-        
+
         ep = self.episodes[self.current_episode_idx]
-        
-        # 检查是否当前 episode 结束
+
+        # Check if current episode finished
         if self.current_frame_idx >= ep["num_frames"]:
             self.current_frame_idx = 0
             self.current_episode_idx += 1
-            
+
             if self.current_episode_idx >= len(self.episodes):
-                # 所有 episode 结束
-                print("\n[HDF5] ✓ 所有 episode 回放完成")
+                # All episodes finished
+                print("\n[HDF5] ✓ All episodes replay complete")
                 self.is_replaying = False
                 self.current_episode_idx = 0
                 return None
             else:
                 ep = self.episodes[self.current_episode_idx]
                 self.frame_interval = 1.0 / (ep["fps"] * self.speed)
-                print(f"\n[HDF5] 切换到 Episode {self.current_episode_idx + 1}/{len(self.episodes)}")
-        
-        # 构建 command
+                print(f"\n[HDF5] Switching to Episode {self.current_episode_idx + 1}/{len(self.episodes)}")
+
+        # Build command
         frame_idx = self.current_frame_idx
         cmd = {}
         
@@ -425,7 +425,7 @@ class HDF5CommandProvider:
             upper_body_indices = robot_model.get_joint_group_indices("upper_body")
             cmd["target_upper_body_pose"] = ep["observation_state"][frame_idx][upper_body_indices]
         
-        # 打印进度
+        # Print progress
         if frame_idx % 20 == 0:
             progress = (frame_idx + 1) / ep["num_frames"] * 100
             nav = cmd["navigate_cmd"]
@@ -440,76 +440,76 @@ class HDF5CommandProvider:
 
 
 def print_safety_warning():
-    """打印安全警告"""
+    """Print safety warning"""
     print("\n" + "!" * 70)
     print("!" + " " * 68 + "!")
-    print("!" + "  ⚠️  警告：即将在真机上回放数据！".center(58) + "!")
+    print("!" + "  ⚠️  WARNING: About to replay data on real robot!".center(68) + "!")
     print("!" + " " * 68 + "!")
     print("!" * 70)
     print("""
-请确保：
-  1. 机器人周围无障碍物和人员
-  2. 急停开关在手边且可用
-  3. 数据集的动作幅度在安全范围内
-  4. 回放速度设置合理（建议先用 0.5x）
-  5. 你已熟悉如何紧急停止
-  
-紧急停止方式：
-  - 按键盘 'o' 停用策略
-  - 按物理急停按钮
-  - Ctrl+C 终止程序
+Please ensure:
+  1. No obstacles or personnel around the robot
+  2. Emergency stop switch is within reach and functional
+  3. Dataset motion amplitude is within safe range
+  4. Replay speed is set appropriately (recommend starting with 0.5x)
+  5. You are familiar with how to perform emergency stop
+
+Emergency stop methods:
+  - Press keyboard 'o' to deactivate policy
+  - Press physical emergency stop button
+  - Ctrl+C to terminate program
 """)
     print("!" * 70 + "\n")
 
 
 def main(config: ReplayRealConfig):
-    # 安全确认
+    # Safety confirmation
     print_safety_warning()
-    
+
     if config.require_confirmation:
-        confirm = input("确认在真机上运行回放？输入 'yes' 继续: ").strip().lower()
+        confirm = input("Confirm running replay on real robot? Enter 'yes' to continue: ").strip().lower()
         if confirm != "yes":
-            print("已取消")
+            print("Cancelled")
             return
-    
+
     ros_manager = ROSManager(node_name="ReplayRealControlLoop")
     node = ros_manager.node
-    
-    # 启动配置服务器
+
+    # Start configuration server
     ROSServiceServer(ROBOT_CONFIG_TOPIC, config.to_dict())
-    
+
     wbc_config = config.load_wbc_yaml()
-    
-    # 状态发布器（用于数据采集和监控）
+
+    # Status publishers (for data collection and monitoring)
     data_exp_pub = ROSMsgPublisher(STATE_TOPIC_NAME)
     lower_body_policy_status_pub = ROSMsgPublisher(LOWER_BODY_POLICY_STATUS_TOPIC)
     joint_safety_status_pub = ROSMsgPublisher(JOINT_SAFETY_STATUS_TOPIC)
-    
+
     telemetry = Telemetry(window_size=100)
-    
+
     waist_location = "lower_and_upper_body" if config.enable_waist else "lower_body"
     robot_model = instantiate_g1_robot_model(
         waist_location=waist_location, high_elbow_pose=config.high_elbow_pose
     )
-    
+
     env = G1Env(
         env_name=config.env_name,
         robot_model=robot_model,
         config=wbc_config,
         wbc_version=config.wbc_version,
     )
-    
+
     wbc_policy = get_wbc_policy("g1", robot_model, wbc_config, config.upper_body_joint_speed)
-    
-    # HDF5 command 提供器
+
+    # HDF5 command provider
     hdf5_provider = HDF5CommandProvider(
         dataset_dir=config.dataset_dir,
         episode=config.episode,
         speed=config.speed,
         preparation_duration=config.preparation_duration,
     )
-    
-    # 键盘调度器
+
+    # Keyboard dispatcher
     keyboard_listener_pub = KeyboardListenerPublisher()
     keyboard_estop = KeyboardEStop()
     if config.keyboard_dispatcher_type == "raw":
@@ -526,44 +526,44 @@ def main(config: ReplayRealConfig):
     dispatcher.register(keyboard_estop)
     dispatcher.register(hdf5_provider)
     dispatcher.start()
-    
+
     rate = node.create_rate(config.control_frequency)
-    
+
     print("\n" + "=" * 60)
-    print("HDF5 真机回放控制循环")
+    print("HDF5 Real Robot Replay Control Loop")
     print("=" * 60)
-    print(f"数据集: {config.dataset_dir}")
-    print(f"回放速度: {config.speed}x")
+    print(f"Dataset: {config.dataset_dir}")
+    print(f"Replay speed: {config.speed}x")
     print("-" * 60)
-    print("操作步骤:")
-    print("  1. 按 ] 激活 WBC 策略")
-    print("  2. 按 p 进入准备阶段（缓慢移动到第一帧位置）")
-    print("  3. 等待准备完成后，按 l 开始/暂停回放")
+    print("Operation steps:")
+    print("  1. Press ] to activate WBC policy")
+    print("  2. Press p to enter preparation phase (slowly move to first frame position)")
+    print("  3. After preparation completes, press l to start/pause replay")
     print("-" * 60)
-    print("安全按键:")
-    print("  o - 停用策略（紧急时使用）")
-    print("  Ctrl+C - 退出程序")
+    print("Safety keys:")
+    print("  o - Deactivate policy (use in emergency)")
+    print("  Ctrl+C - Exit program")
     print("=" * 60 + "\n")
-    
+
     last_teleop_cmd = None
-    
+
     try:
         while ros_manager.ok():
             t_start = time.monotonic()
-            
+
             with telemetry.timer("total_loop"):
-                # 获取观测
+                # Get observation
                 with telemetry.timer("observe"):
                     obs = env.observe()
                     wbc_policy.set_observation(obs)
-                
+
                 t_now = time.monotonic()
-                
-                # 获取 command（传入当前观测用于准备阶段）
+
+                # Get command (pass current observation for preparation phase)
                 with telemetry.timer("get_command"):
                     replay_cmd = hdf5_provider.get_command(robot_model, current_obs=obs)
-                
-                # 构建 wbc_goal
+
+                # Build wbc_goal
                 with telemetry.timer("policy_setup"):
                     if replay_cmd:
                         wbc_goal = replay_cmd.copy()
@@ -576,24 +576,24 @@ def main(config: ReplayRealConfig):
                             "base_height_command": DEFAULT_BASE_HEIGHT,
                             "target_upper_body_pose": obs["q"][upper_body_indices],
                         }
-                    
+
                     wbc_goal["target_time"] = t_now + (1 / config.control_frequency)
                     wbc_goal["interpolation_garbage_collection_time"] = t_now - 2 * (
                         1 / config.control_frequency
                     )
                     wbc_policy.set_goal(wbc_goal)
-                
-                # 获取动作
+
+                # Get action
                 with telemetry.timer("policy_action"):
                     wbc_action = wbc_policy.get_action(time=t_now)
-                
-                # 执行动作
+
+                # Execute action
                 with telemetry.timer("queue_action"):
                     env.queue_action(wbc_action)
-                
-                # 发布状态（与 run_g1_control_loop.py 相同）
+
+                # Publish status (same as run_g1_control_loop.py)
                 with telemetry.timer("publish_status"):
-                    # 策略状态
+                    # Policy status
                     policy_use_action = False
                     try:
                         if hasattr(wbc_policy, "lower_body_policy"):
@@ -602,28 +602,28 @@ def main(config: ReplayRealConfig):
                             )
                     except (AttributeError, TypeError):
                         policy_use_action = False
-                    
+
                     policy_status_msg = {"use_policy_action": policy_use_action, "timestamp": t_now}
                     lower_body_policy_status_pub.publish(policy_status_msg)
-                    
-                    # 关节安全状态
+
+                    # Joint safety status
                     joint_safety_ok = env.get_joint_safety_status()
                     joint_safety_status_msg = {
                         "joint_safety_ok": joint_safety_ok,
                         "timestamp": t_now,
                     }
                     joint_safety_status_pub.publish(joint_safety_status_msg)
-                    
-                    # 安全警告
+
+                    # Safety warning
                     if not joint_safety_ok:
-                        print("\n⚠️ 关节安全警告！请检查机器人状态")
-                
-                # 导出数据
+                        print("\n⚠️ Joint safety warning! Please check robot status")
+
+                # Export data
                 msg = deepcopy(obs)
                 for key in list(obs.keys()):
                     if key.endswith("_image"):
                         del msg[key]
-                
+
                 if last_teleop_cmd:
                     msg.update({
                         "action": wbc_action["q"],
@@ -640,27 +640,27 @@ def main(config: ReplayRealConfig):
                         },
                     })
                 data_exp_pub.publish(msg)
-                
+
                 end_time = time.monotonic()
-            
+
             rate.sleep()
-            
-            # 时间日志
+
+            # Timing log
             if config.verbose_timing:
                 telemetry.log_timing_info(context="Replay Real Control Loop", threshold=0.0)
             elif (end_time - t_start) > (1 / config.control_frequency):
                 telemetry.log_timing_info(context="Replay Real Control Loop Missed", threshold=0.001)
-    
+
     except ros_manager.exceptions() as e:
         print(f"\nROSManager interrupted: {e}")
     except KeyboardInterrupt:
-        print("\n用户中断")
+        print("\nUser interrupted")
     finally:
         print("\nCleaning up...")
         dispatcher.stop()
         ros_manager.shutdown()
         env.close()
-        print("已安全退出")
+        print("Exited safely")
 
 
 if __name__ == "__main__":

@@ -916,9 +916,9 @@ class InferenceController:
         if TASK == "bed":
             self.hand_status_zero_threshold = 100
         self.hand_status_seen_closed = False  # Flag: have we seen hand_status=1 at least once?
-        self.prev_left_hand_status = None  # 上一帧左手状态，用于检测闭合→打开
-        self.left_hand_open_transition_count = 0  # 左手闭合→打开已遇到的次数，第二次才启动延迟
-        self.left_hand_open_delay_count = 0  # 左手闭合→打开后，强制输出1的剩余次数
+        self.prev_left_hand_status = None  # Previous frame left hand status, used to detect closed→open
+        self.left_hand_open_transition_count = 0  # Number of left hand closed→open transitions encountered, delay starts on second occurrence
+        self.left_hand_open_delay_count = 0  # Remaining count to force output 1 after left hand closed→open
         self.original_initial_eef = None  # Backup of original initial_eef (for bed task)
         
     def handle_keyboard_button(self, key):
@@ -987,10 +987,10 @@ class InferenceController:
                 print("\n[Controller] 🔊 Exiting silent mode")
                 
         elif key == "c":
-            # Toggle left hand only (right hand保持打开)
+            # Toggle left hand only (right hand stays open)
             self.gripper_closed = not self.gripper_closed
-            state = "闭合" if self.gripper_closed else "打开"
-            print(f"\n[Controller] ✋ 左手: {state}")
+            state = "Closed" if self.gripper_closed else "Open"
+            print(f"\n[Controller] ✋ Left hand: {state}")
                 
         elif key == "o":
             # Emergency stop
@@ -1165,7 +1165,7 @@ class InferenceController:
                     self.gripper_current = max(self.gripper_current - self.gripper_speed, target_gripper)
                 
                 # Apply smoothed gripper state
-                # 仅左手受 'c' 控制，右手保持打开
+                # Only left hand controlled by 'c', right hand stays open
                 left_hand_q, right_hand_q = self.hand_controller.get_hand_joints(
                     np.array([self.gripper_current, 0.0])
                 )
@@ -1194,7 +1194,7 @@ class InferenceController:
             # Buffer is empty (waiting for first inference result)
             # Keep current hand state instead of returning None
             if self.preparation_target_upper_body is not None:
-                # 仅左手受 'c' 控制，右手保持打开
+                # Only left hand controlled by 'c', right hand stays open
                 target_gripper = 1.0 if self.gripper_closed else 0.0
                 left_hand_q, right_hand_q = self.hand_controller.get_hand_joints(
                     np.array([target_gripper, 0.0])
@@ -1237,7 +1237,7 @@ class InferenceController:
         elif TASK == "bed":
             if navigate_cmd[0] < -0.1:
                 navigate_cmd[0] = -0.2
-            #### xuyaotiao 第一个参数要小于0.2, 第二个参数要小于0.5
+            #### Note: first parameter should be < 0.2, second parameter should be < 0.5
             if navigate_cmd[0] > 0.08:
                 navigate_cmd[0] = 0.3
             else:
@@ -1247,7 +1247,7 @@ class InferenceController:
         elif TASK == "toy":
             if navigate_cmd[0] < -0.1:
                 navigate_cmd[0] = -0.2
-            #### xuyaotiao 第一个参数要小于0.2, 第二个参数要小于0.5
+            #### Note: first parameter should be < 0.2, second parameter should be < 0.5
             if navigate_cmd[0] > 0.1:
                 navigate_cmd[0] = 0.3
             else:
@@ -1296,24 +1296,24 @@ class InferenceController:
                     print("[Controller] ⏸ Inference stopped")
                     
                     # Return to initial position (simulate pressing 'p')
-                    # 对于bed任务，返回到调整后的位姿
+                    # For bed task, return to adjusted pose
                     if TASK == "bed":
-                        # 创建修改后的目标位姿
-                        # initial_eef格式: [left_xyz(3), left_quat(4), right_xyz(3), right_quat(4)]
-                        # index 1: 左手y位置，index 8: 右手y位置
+                        # Create modified target pose
+                        # initial_eef format: [left_xyz(3), left_quat(4), right_xyz(3), right_quat(4)]
+                        # index 1: left hand y position, index 8: right hand y position
                         adjusted_eef = self.initial_eef.copy()
-                        adjusted_eef[1] += 0.1  # 左手y增加0.1
-                        adjusted_eef[8] -= 0.1  # 右手y减少0.1
-                        
-                        print(f"[Controller] 📍 Bed任务: 返回到调整后的位姿")
-                        print(f"  左手y: {self.initial_eef[1]:.3f} -> {adjusted_eef[1]:.3f} (+0.1)")
-                        print(f"  右手y: {self.initial_eef[8]:.3f} -> {adjusted_eef[8]:.3f} (-0.1)")
-                        
-                        # 临时保存原始initial_eef
+                        adjusted_eef[1] += 0.1  # Increase left hand y by 0.1
+                        adjusted_eef[8] -= 0.1  # Decrease right hand y by 0.1
+
+                        print(f"[Controller] 📍 Bed task: returning to adjusted pose")
+                        print(f"  Left hand y: {self.initial_eef[1]:.3f} -> {adjusted_eef[1]:.3f} (+0.1)")
+                        print(f"  Right hand y: {self.initial_eef[8]:.3f} -> {adjusted_eef[8]:.3f} (-0.1)")
+
+                        # Temporarily save original initial_eef
                         original_initial_eef = self.initial_eef.copy()
-                        # 使用调整后的位姿作为目标
+                        # Use adjusted pose as target
                         self.initial_eef = adjusted_eef
-                        
+
                         self.is_preparing = True
                         self.preparation_complete = False
                         self.preparation_start_time = None
@@ -1325,11 +1325,11 @@ class InferenceController:
                         self.prev_left_hand_status = None
                         self.left_hand_open_transition_count = 0
                         self.left_hand_open_delay_count = 0
-                        
-                        # 恢复原始initial_eef（在准备阶段完成后会用到）
+
+                        # Restore original initial_eef (will be used after preparation phase completes)
                         self.original_initial_eef = original_initial_eef
                     else:
-                        # 其他任务直接返回初始位置
+                        # Other tasks return directly to initial position
                         self.is_preparing = True
                         self.preparation_complete = False
                         self.preparation_start_time = None
@@ -1348,20 +1348,20 @@ class InferenceController:
                     print(f"[Controller] Hand status returned to closed, resetting counter (was at {self.hand_status_zero_count})")
                 self.hand_status_zero_count = 0
                 self.left_hand_open_transition_count = 0
-                self.left_hand_open_delay_count = 0  # 手重新闭合时也取消左手延迟
+                self.left_hand_open_delay_count = 0  # Cancel left hand delay when hand closes again
         
         self.prev_hand_status = avg_hand_status
         
-        # 左手从闭合变为打开时：第一次不作用，第二次才延迟 N 次再真正打开
+        # When left hand changes from closed to open: no effect on first time, delay N times on second occurrence before actually opening
         raw_left = float(hand_status[0])
         if self.prev_left_hand_status is not None and self.prev_left_hand_status > 0.1 and raw_left <= 0.1:
             self.left_hand_open_transition_count += 1
             if TASK == "cart":
                 if self.left_hand_open_transition_count == 2:
-                    self.left_hand_open_delay_count = 52  # 延迟次数，改这里即可
+                    self.left_hand_open_delay_count = 52  # Delay count, change here to adjust
             elif TASK == "garbage":
                 if self.left_hand_open_transition_count == 1:
-                    self.left_hand_open_delay_count = 0  # 延迟次数，改这里即可
+                    self.left_hand_open_delay_count = 0  # Delay count, change here to adjust
         if self.left_hand_open_delay_count > 0:
             hand_status[0] = 1.0
             self.left_hand_open_delay_count -= 1
@@ -1457,11 +1457,11 @@ class InferenceController:
             self.preparation_complete = True
             print(f"\n[Controller] ✓ Preparation complete! Press 'l' to start")
             
-            # 如果是bed任务的自动返回，恢复原始initial_eef
+            # If returning automatically for bed task, restore original initial_eef
             if self.original_initial_eef is not None:
                 self.initial_eef = self.original_initial_eef
                 self.original_initial_eef = None
-                print(f"[Controller] 已恢复原始初始位姿")
+                print(f"[Controller] Restored original initial pose")
         else:
             t = elapsed / self.config.preparation_duration
             progress = t * t * (3.0 - 2.0 * t)  # smoothstep
@@ -1488,7 +1488,7 @@ class InferenceController:
         elif self.gripper_current > target_gripper:
             self.gripper_current = max(self.gripper_current - self.gripper_speed, target_gripper)
         
-        # 仅左手受 'c' 控制，右手保持打开
+        # Only left hand controlled by 'c', right hand stays open
         left_hand_q, right_hand_q = self.hand_controller.get_hand_joints(
             np.array([self.gripper_current, 0.0])
         )

@@ -1,31 +1,31 @@
 #!/bin/bash
 #
-# 人体数据处理流水线脚本(caonda 环境 zed)
+# Human data processing pipeline script (conda environment with ZED)
 #
-# 功能：
-#   1. 运行 reorder_episodes_for_raw.py 对原始数据进行重排序
-#   2. 运行 process_navigation_pipeline.py 将 navigation_command 注入 HDF5 文件
-#   3. 运行 downsample_episode.py 对数据进行降采样处理
-#   4. 运行 merge_camera_only.py 将相机图像数据整合到 HDF5 文件
-#   5. 运行 add_hand_status.py 从原始手部姿态计算手部开合状态并写入最终文件
+# Functions:
+#   1. Run reorder_episodes_for_raw.py to reorder raw data
+#   2. Run process_navigation_pipeline.py to inject navigation_command into HDF5 files
+#   3. Run downsample_episode.py to downsample data
+#   4. Run merge_camera_only.py to integrate camera images into HDF5 files
+#   5. Run add_hand_status.py to compute hand open/close status from raw hand poses and write to final files
 #
-# 用法：
-#   ./run_human_data_pipeline.sh --input_dir <输入目录> --output_dir <输出目录> [选项]
+# Usage:
+#   ./run_human_data_pipeline.sh --input_dir <input_dir> --output_dir <output_dir> [options]
 #
-# 示例：
+# Example:
 
 # ./run_human_data_pipeline.sh  --input_dir /home/admins/psj_ws/new_zed_mini_ws/toy/ --output_dir /home/admins/psj_ws/new_zed_mini_ws/toy/reorder --file all --final-output-dir ../output
-# --input_dir /home/admins/psj_ws/new_zed_mini_ws/toy/     \ 
-# --output_dir /home/admins/psj_ws/new_zed_mini_ws/toy/reorder   \ 
+# --input_dir /home/admins/psj_ws/new_zed_mini_ws/toy/     \
+# --output_dir /home/admins/psj_ws/new_zed_mini_ws/toy/reorder   \
 # --file all  \
 # --final-output-dir ../output
 
-set -e  # 遇到错误立即退出
+set -e  # Exit immediately on error
 
-# 获取脚本所在目录
+# Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# 默认参数
+# Default parameters
 INPUT_DIR=""
 OUTPUT_DIR=""
 FINAL_OUTPUT_DIR=""
@@ -42,44 +42,44 @@ SKIP_DOWNSAMPLE=""
 SKIP_MERGE=""
 SKIP_HAND_STATUS=""
 DOWNSAMPLE_RATE="5"
-# 打印使用说明
+# Print usage instructions
 usage() {
-    echo "用法: $0 --input_dir <输入目录> --output_dir <输出目录> --final-output-dir <最终输出目录> [选项]"
+    echo "Usage: $0 --input_dir <input_dir> --output_dir <output_dir> --final-output-dir <final_output_dir> [options]"
     echo ""
-    echo "必需参数:"
-    echo "  --input_dir <路径>          原始数据输入目录（包含 {日期}_{批次} 子目录）"
-    echo "  --output_dir <路径>         中间输出目录（会在此目录下创建 hdf5/ svo2/ 子目录）"
-    echo "  --final-output-dir <路径>   最终输出目录（整合相机图像后的文件）"
+    echo "Required parameters:"
+    echo "  --input_dir <path>          Raw data input directory (containing {date}_{batch} subdirectories)"
+    echo "  --output_dir <path>         Intermediate output directory (hdf5/ and svo2/ subdirectories will be created here)"
+    echo "  --final-output-dir <path>   Final output directory (for files with integrated camera images)"
     echo ""
-    echo "可选参数:"
-    echo "  --file <类型>           文件类型: hdf5, svo2, all (默认: all)"
-    echo "  --workers <数量>        并行线程数 (默认: 16)"
-    echo "  --baseline-sec <秒>     tangent 基准平滑窗口秒数 (默认: 15)"
-    echo "  --tangent-lag <帧>      tangent 切向差分间隔帧数 (默认: 5)"
-    echo "  --no-overwrite          不覆盖已存在的数据"
-    echo "  --with-png              生成对比 PNG 图片"
-    echo "  --skip-reorder          跳过重排序步骤"
-    echo "  --skip-navigation       跳过 navigation 注入步骤"
-    echo "  --skip-downsample       跳过降采样步骤"
-    echo "  --skip-merge            跳过相机图像整合步骤"
-    echo "  --skip-hand-status      跳过手部开合状态计算步骤"
-    echo "  --downsample-rate <率>  降采样率 (默认: 5)"
-    echo "  --dry-run               预览模式，不执行实际操作"
-    echo "  -h, --help              显示此帮助信息"
+    echo "Optional parameters:"
+    echo "  --file <type>           File type: hdf5, svo2, or all (default: all)"
+    echo "  --workers <number>      Number of parallel threads (default: 16)"
+    echo "  --baseline-sec <sec>    Tangent baseline smoothing window in seconds (default: 15)"
+    echo "  --tangent-lag <frames>  Tangent direction estimation lag in frames (default: 5)"
+    echo "  --no-overwrite          Do not overwrite existing data"
+    echo "  --with-png              Generate comparison PNG images"
+    echo "  --skip-reorder          Skip reorder step"
+    echo "  --skip-navigation       Skip navigation injection step"
+    echo "  --skip-downsample       Skip downsample step"
+    echo "  --skip-merge            Skip camera image integration step"
+    echo "  --skip-hand-status      Skip hand status computation step"
+    echo "  --downsample-rate <rate> Downsample rate (default: 5)"
+    echo "  --dry-run               Preview mode, do not execute actual operations"
+    echo "  -h, --help              Show this help message"
     echo ""
-    echo "示例:"
-    echo "  # 完整流水线"
+    echo "Examples:"
+    echo "  # Full pipeline"
     echo "  $0 --input_dir /data/raw --output_dir /data/processed --final-output-dir /data/final"
     echo ""
-    echo "  # 跳过重排序（已有重排序数据）"
+    echo "  # Skip reorder (already have reordered data)"
     echo "  $0 --input_dir /data/raw --output_dir /data/processed --final-output-dir /data/final --skip-reorder"
     echo ""
-    echo "  # 预览模式"
+    echo "  # Preview mode"
     echo "  $0 --input_dir /data/raw --output_dir /data/processed --final-output-dir /data/final --dry-run"
     exit 1
 }
 
-# 解析命令行参数
+# Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
         --input_dir)
@@ -150,97 +150,97 @@ while [[ $# -gt 0 ]]; do
             usage
             ;;
         *)
-            echo "错误: 未知参数 '$1'"
+            echo "Error: Unknown parameter '$1'"
             usage
             ;;
     esac
 done
 
-# 检查必需参数
+# Check required parameters
 if [[ -z "$INPUT_DIR" ]]; then
-    echo "错误: 缺少 --input_dir 参数"
+    echo "Error: Missing --input_dir parameter"
     usage
 fi
 
 if [[ -z "$OUTPUT_DIR" ]]; then
-    echo "错误: 缺少 --output_dir 参数"
+    echo "Error: Missing --output_dir parameter"
     usage
 fi
 
 if [[ -z "$FINAL_OUTPUT_DIR" ]]; then
-    echo "错误: 缺少 --final-output-dir 参数"
+    echo "Error: Missing --final-output-dir parameter"
     usage
 fi
 
-# 构建 WORKERS 参数
+# Build WORKERS parameter
 WORKERS="--workers $WORKERS_NUM"
 
-# 打印配置信息
+# Print configuration
 echo "========================================"
-echo "🚀 人体数据处理流水线"
+echo "🚀 Human Data Processing Pipeline"
 echo "========================================"
-echo "输入目录:       $INPUT_DIR"
-echo "中间输出目录:   $OUTPUT_DIR"
-echo "最终输出目录:   $FINAL_OUTPUT_DIR"
-echo "文件类型:       $FILE_TYPE"
-echo "并行线程数:     $WORKERS_NUM"
-echo "baseline-sec:   $BASELINE_SEC"
-echo "tangent-lag:    $TANGENT_LAG"
-echo "覆盖模式:       $([ -n "$OVERWRITE" ] && echo '是' || echo '否')"
-echo "生成PNG:        $([ -z "$NO_PNG" ] && echo '是' || echo '否')"
-echo "跳过重排序:     $([ -n "$SKIP_REORDER" ] && echo '是' || echo '否')"
-echo "跳过navigation: $([ -n "$SKIP_NAVIGATION" ] && echo '是' || echo '否')"
-echo "跳过降采样:     $([ -n "$SKIP_DOWNSAMPLE" ] && echo '是' || echo '否')"
-echo "跳过图像整合:   $([ -n "$SKIP_MERGE" ] && echo '是' || echo '否')"
-echo "跳过手部状态:   $([ -n "$SKIP_HAND_STATUS" ] && echo '是' || echo '否')"
-echo "降采样率:       $DOWNSAMPLE_RATE"
-echo "预览模式:       $([ -n "$DRY_RUN" ] && echo '是' || echo '否')"
+echo "Input directory:       $INPUT_DIR"
+echo "Intermediate output:   $OUTPUT_DIR"
+echo "Final output:          $FINAL_OUTPUT_DIR"
+echo "File type:             $FILE_TYPE"
+echo "Parallel threads:      $WORKERS_NUM"
+echo "baseline-sec:          $BASELINE_SEC"
+echo "tangent-lag:           $TANGENT_LAG"
+echo "Overwrite mode:        $([ -n "$OVERWRITE" ] && echo 'Yes' || echo 'No')"
+echo "Generate PNG:          $([ -z "$NO_PNG" ] && echo 'Yes' || echo 'No')"
+echo "Skip reorder:          $([ -n "$SKIP_REORDER" ] && echo 'Yes' || echo 'No')"
+echo "Skip navigation:       $([ -n "$SKIP_NAVIGATION" ] && echo 'Yes' || echo 'No')"
+echo "Skip downsample:       $([ -n "$SKIP_DOWNSAMPLE" ] && echo 'Yes' || echo 'No')"
+echo "Skip image merge:      $([ -n "$SKIP_MERGE" ] && echo 'Yes' || echo 'No')"
+echo "Skip hand status:      $([ -n "$SKIP_HAND_STATUS" ] && echo 'Yes' || echo 'No')"
+echo "Downsample rate:       $DOWNSAMPLE_RATE"
+echo "Preview mode:          $([ -n "$DRY_RUN" ] && echo 'Yes' || echo 'No')"
 echo "========================================"
 echo ""
 
-# Step 1: 运行重排序脚本
+# Step 1: Run reorder script
 if [[ -z "$SKIP_REORDER" ]]; then
     echo "========================================"
-    echo "📋 Step 1: 运行重排序脚本"
+    echo "📋 Step 1: Run reorder script"
     echo "========================================"
     echo ""
-    
+
     REORDER_CMD="python ${SCRIPT_DIR}/scripts/reorder_episodes_for_raw.py \
         --input_dir \"$INPUT_DIR\" \
         --output_dir \"$OUTPUT_DIR\" \
         --file $FILE_TYPE \
         $WORKERS \
         $DRY_RUN"
-    
-    echo "执行命令:"
+
+    echo "Executing command:"
     echo "$REORDER_CMD"
     echo ""
-    
+
     eval $REORDER_CMD
-    
+
     echo ""
-    echo "✅ Step 1 完成"
+    echo "✅ Step 1 completed"
     echo ""
 else
-    echo "⏭️  跳过 Step 1 (重排序)"
+    echo "⏭️  Skipping Step 1 (reorder)"
     echo ""
 fi
 
-# Step 2: 运行 navigation pipeline
+# Step 2: Run navigation pipeline
 if [[ -z "$SKIP_NAVIGATION" ]]; then
     echo "========================================"
-    echo "📋 Step 2: 运行 Navigation Pipeline"
+    echo "📋 Step 2: Run Navigation Pipeline"
     echo "========================================"
     echo ""
-    
-    # 检查 hdf5 目录是否存在
+
+    # Check if hdf5 directory exists
     HDF5_DIR="${OUTPUT_DIR}/hdf5"
     if [[ ! -d "$HDF5_DIR" ]] && [[ -z "$DRY_RUN" ]]; then
-        echo "错误: hdf5 目录不存在: $HDF5_DIR"
-        echo "请先运行重排序步骤，或检查输出目录路径是否正确"
+        echo "Error: hdf5 directory does not exist: $HDF5_DIR"
+        echo "Please run the reorder step first, or check if the output directory path is correct"
         exit 1
     fi
-    
+
     NAV_CMD="python ${SCRIPT_DIR}/process_navigation_pipeline.py \
         --dataset-dir \"$OUTPUT_DIR\" \
         --baseline-sec $BASELINE_SEC \
@@ -248,156 +248,156 @@ if [[ -z "$SKIP_NAVIGATION" ]]; then
         $OVERWRITE \
         $NO_PNG \
         $DRY_RUN"
-    
-    echo "执行命令:"
+
+    echo "Executing command:"
     echo "$NAV_CMD"
     echo ""
-    
+
     eval $NAV_CMD
-    
+
     echo ""
-    echo "✅ Step 2 完成"
+    echo "✅ Step 2 completed"
     echo ""
 else
-    echo "⏭️  跳过 Step 2 (Navigation Pipeline)"
+    echo "⏭️  Skipping Step 2 (Navigation Pipeline)"
     echo ""
 fi
 
-# Step 3: 运行降采样脚本
+# Step 3: Run downsample script
 if [[ -z "$SKIP_DOWNSAMPLE" ]]; then
     echo "========================================"
-    echo "📋 Step 3: 运行降采样脚本"
+    echo "📋 Step 3: Run downsample script"
     echo "========================================"
     echo ""
-    
-    # 检查 hdf5 目录是否存在
+
+    # Check if hdf5 directory exists
     HDF5_DIR="${OUTPUT_DIR}/hdf5"
     if [[ ! -d "$HDF5_DIR" ]] && [[ -z "$DRY_RUN" ]]; then
-        echo "错误: hdf5 目录不存在: $HDF5_DIR"
-        echo "请先运行前面的步骤，或检查输出目录路径是否正确"
+        echo "Error: hdf5 directory does not exist: $HDF5_DIR"
+        echo "Please run the previous steps first, or check if the output directory path is correct"
         exit 1
     fi
-    
+
     DOWNSAMPLE_CMD="python ${SCRIPT_DIR}/downsample_episode.py \
         --dataset-dir \"$OUTPUT_DIR\" \
         --downsample-rate $DOWNSAMPLE_RATE \
         $OVERWRITE \
         $DRY_RUN"
-    
-    echo "执行命令:"
+
+    echo "Executing command:"
     echo "$DOWNSAMPLE_CMD"
     echo ""
-    
+
     eval $DOWNSAMPLE_CMD
-    
+
     echo ""
-    echo "✅ Step 3 完成"
+    echo "✅ Step 3 completed"
     echo ""
 else
-    echo "⏭️  跳过 Step 3 (降采样)"
+    echo "⏭️  Skipping Step 3 (downsample)"
     echo ""
 fi
 
-# Step 4: 运行相机图像整合脚本
+# Step 4: Run camera image integration script
 if [[ -z "$SKIP_MERGE" ]]; then
     echo "========================================"
-    echo "📋 Step 4: 运行相机图像整合脚本"
+    echo "📋 Step 4: Run camera image integration script"
     echo "========================================"
     echo ""
-    
-    # 检查 hdf5 和 svo2 目录是否存在
+
+    # Check if hdf5 and svo2 directories exist
     HDF5_DIR="${OUTPUT_DIR}/hdf5"
     SVO2_DIR="${OUTPUT_DIR}/svo2"
     if [[ ! -d "$HDF5_DIR" ]] && [[ -z "$DRY_RUN" ]]; then
-        echo "错误: hdf5 目录不存在: $HDF5_DIR"
-        echo "请先运行前面的步骤，或检查输出目录路径是否正确"
+        echo "Error: hdf5 directory does not exist: $HDF5_DIR"
+        echo "Please run the previous steps first, or check if the output directory path is correct"
         exit 1
     fi
     if [[ ! -d "$SVO2_DIR" ]] && [[ -z "$DRY_RUN" ]]; then
-        echo "错误: svo2 目录不存在: $SVO2_DIR"
-        echo "请先运行前面的步骤，或检查输出目录路径是否正确"
+        echo "Error: svo2 directory does not exist: $SVO2_DIR"
+        echo "Please run the previous steps first, or check if the output directory path is correct"
         exit 1
     fi
-    
+
     MERGE_CMD="python ${SCRIPT_DIR}/merge_camera_only.py \
         --dataset-dir \"$OUTPUT_DIR\" \
         --output-dir \"$FINAL_OUTPUT_DIR\" \
         --num-workers $WORKERS_NUM"
-    
-    echo "执行命令:"
+
+    echo "Executing command:"
     echo "$MERGE_CMD"
     echo ""
-    
+
     if [[ -z "$DRY_RUN" ]]; then
         eval $MERGE_CMD
     else
-        echo "[dry-run] 将整合 ${HDF5_DIR}/downsample_episode_*.hdf5 和 ${SVO2_DIR}/episode_*.svo2"
-        echo "[dry-run] 输出到: $FINAL_OUTPUT_DIR"
+        echo "[dry-run] Will merge ${HDF5_DIR}/downsample_episode_*.hdf5 and ${SVO2_DIR}/episode_*.svo2"
+        echo "[dry-run] Output to: $FINAL_OUTPUT_DIR"
     fi
-    
+
     echo ""
-    echo "✅ Step 4 完成"
+    echo "✅ Step 4 completed"
     echo ""
 else
-    echo "⏭️  跳过 Step 4 (相机图像整合)"
+    echo "⏭️  Skipping Step 4 (camera image integration)"
     echo ""
 fi
 
-# Step 5: 运行手部开合状态计算脚本
+# Step 5: Run hand status computation script
 if [[ -z "$SKIP_HAND_STATUS" ]]; then
     echo "========================================"
-    echo "📋 Step 5: 运行手部开合状态计算脚本"
+    echo "📋 Step 5: Run hand status computation script"
     echo "========================================"
     echo ""
-    
-    # 检查原始 hdf5 目录和最终输出目录是否存在
+
+    # Check if raw hdf5 directory and final output directory exist
     HDF5_DIR="${OUTPUT_DIR}/hdf5"
     if [[ ! -d "$HDF5_DIR" ]] && [[ -z "$DRY_RUN" ]]; then
-        echo "错误: hdf5 目录不存在: $HDF5_DIR"
-        echo "请先运行前面的步骤，或检查输出目录路径是否正确"
+        echo "Error: hdf5 directory does not exist: $HDF5_DIR"
+        echo "Please run the previous steps first, or check if the output directory path is correct"
         exit 1
     fi
     if [[ ! -d "$FINAL_OUTPUT_DIR" ]] && [[ -z "$DRY_RUN" ]]; then
-        echo "错误: 最终输出目录不存在: $FINAL_OUTPUT_DIR"
-        echo "请先运行 Step 4 (相机图像整合)，或检查路径是否正确"
+        echo "Error: final output directory does not exist: $FINAL_OUTPUT_DIR"
+        echo "Please run Step 4 (camera image integration) first, or check if the path is correct"
         exit 1
     fi
-    
+
     HAND_STATUS_CMD="python ${SCRIPT_DIR}/add_hand_status.py \
         --raw \"$HDF5_DIR\" \
         --mid \"$FINAL_OUTPUT_DIR\" \
         --target \"$FINAL_OUTPUT_DIR\" \
         --downsample $DOWNSAMPLE_RATE \
         --num_workers $WORKERS_NUM"
-    
-    echo "执行命令:"
+
+    echo "Executing command:"
     echo "$HAND_STATUS_CMD"
     echo ""
-    
+
     if [[ -z "$DRY_RUN" ]]; then
         eval $HAND_STATUS_CMD
     else
-        echo "[dry-run] 将从 ${HDF5_DIR}/episode_*.hdf5 读取手部姿态数据"
-        echo "[dry-run] 将 hand_status 写入 ${FINAL_OUTPUT_DIR}/episode_*.hdf5 (原地模式)"
+        echo "[dry-run] Will read hand pose data from ${HDF5_DIR}/episode_*.hdf5"
+        echo "[dry-run] Will write hand_status to ${FINAL_OUTPUT_DIR}/episode_*.hdf5 (in-place mode)"
     fi
-    
+
     echo ""
-    echo "✅ Step 5 完成"
+    echo "✅ Step 5 completed"
     echo ""
 else
-    echo "⏭️  跳过 Step 5 (手部开合状态计算)"
+    echo "⏭️  Skipping Step 5 (hand status computation)"
     echo ""
 fi
 
 echo "========================================"
-echo "🎉 流水线执行完成！"
+echo "🎉 Pipeline execution completed!"
 echo "========================================"
-echo "中间输出目录: $OUTPUT_DIR"
+echo "Intermediate output directory: $OUTPUT_DIR"
 if [[ "$FILE_TYPE" == "all" ]] || [[ "$FILE_TYPE" == "hdf5" ]]; then
     echo "  - hdf5: ${OUTPUT_DIR}/hdf5/"
-    echo "    - episode_*.hdf5 (原始+navigation_command)"
+    echo "    - episode_*.hdf5 (raw + navigation_command)"
     if [[ -z "$SKIP_DOWNSAMPLE" ]]; then
-        echo "    - downsample_episode_*.hdf5 (降采样后)"
+        echo "    - downsample_episode_*.hdf5 (after downsampling)"
     fi
 fi
 if [[ "$FILE_TYPE" == "all" ]] || [[ "$FILE_TYPE" == "svo2" ]]; then
@@ -405,11 +405,11 @@ if [[ "$FILE_TYPE" == "all" ]] || [[ "$FILE_TYPE" == "svo2" ]]; then
 fi
 if [[ -z "$SKIP_MERGE" ]] || [[ -z "$SKIP_HAND_STATUS" ]]; then
     echo ""
-    echo "最终输出目录: $FINAL_OUTPUT_DIR"
+    echo "Final output directory: $FINAL_OUTPUT_DIR"
     if [[ -z "$SKIP_HAND_STATUS" ]]; then
-        echo "  - episode_*.hdf5 (包含相机图像 + hand_status)"
+        echo "  - episode_*.hdf5 (with camera images + hand_status)"
     else
-        echo "  - episode_*.hdf5 (包含相机图像)"
+        echo "  - episode_*.hdf5 (with camera images)"
     fi
 fi
 echo "========================================"

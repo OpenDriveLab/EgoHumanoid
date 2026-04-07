@@ -21,178 +21,178 @@ TELEOP_NODE_NAME = "TeleopPolicy"
 
 
 class VRDataDebugger:
-    """VR数据调试器 - 用于检查VR指令接收情况"""
-    
+    """VR data debugger - for checking VR command reception"""
+
     def __init__(self, enable_debug=True, print_interval=1.0):
         """
         Args:
-            enable_debug: 是否启用调试输出
-            print_interval: 打印间隔（秒）
+            enable_debug: Whether to enable debug output
+            print_interval: Print interval (seconds)
         """
         self.enable_debug = enable_debug
         self.print_interval = print_interval
         self.last_print_time = 0.0
-        
-        # 数据统计
+
+        # Data statistics
         self.data_received_count = 0
         self.last_data = None
         self.data_change_count = 0
-        
-        # 数据有效性检查
+
+        # Data validity check
         self.wrist_pos_history = {"left": deque(maxlen=10), "right": deque(maxlen=10)}
         self.nav_cmd_history = deque(maxlen=10)
-        
+
     def check_data(self, data: dict, iteration: int):
-        """检查并显示VR数据
-        
+        """Check and display VR data
+
         Args:
-            data: teleop_policy返回的数据字典
-            iteration: 当前迭代次数
+            data: data dictionary returned by teleop_policy
+            iteration: current iteration count
         """
         if not self.enable_debug:
             return
-        
+
         self.data_received_count += 1
         t_now = time.monotonic()
-        
-        # 检查数据是否发生变化
+
+        # Check if data has changed
         data_changed = False
         if self.last_data is not None:
             data_changed = self._check_data_changed(data, self.last_data)
             if data_changed:
                 self.data_change_count += 1
-        
+
         self.last_data = data.copy() if data else None
-        
-        # 定期打印详细信息
+
+        # Periodically print detailed information
         if t_now - self.last_print_time >= self.print_interval:
             self._print_debug_info(data, iteration, data_changed)
             self.last_print_time = t_now
-    
+
     def _check_data_changed(self, current: dict, last: dict) -> bool:
-        """检查数据是否发生变化"""
-        # 检查关键字段
+        """Check if data has changed"""
+        # Check key fields
         key_fields = ["wrist_pose", "navigate_cmd", "base_height_command", "target_upper_body_pose"]
-        
+
         for key in key_fields:
             if key in current and key in last:
                 curr_val = np.array(current[key])
                 last_val = np.array(last[key])
                 if not np.allclose(curr_val, last_val, atol=1e-4):
                     return True
-        
+
         return False
-    
+
     def _print_debug_info(self, data: dict, iteration: int, data_changed: bool):
-        """打印调试信息"""
+        """Print debug information"""
         print("\n" + "="*60)
-        print(f"[VR调试] 迭代次数: {iteration} | 接收数据次数: {self.data_received_count}")
-        print(f"[VR调试] 数据变化次数: {self.data_change_count} | 本次数据变化: {'是' if data_changed else '否'}")
+        print(f"[VR Debug] Iteration: {iteration} | Data received count: {self.data_received_count}")
+        print(f"[VR Debug] Data change count: {self.data_change_count} | This data changed: {'Yes' if data_changed else 'No'}")
         print("-"*60)
-        
+
         if data is None:
-            print("[警告] 未接收到任何数据！")
+            print("[Warning] No data received!")
             return
-        
-        # 检查teleop_policy激活状态
+
+        # Check teleop_policy activation status
         if hasattr(data, 'get'):
             is_active = getattr(data, 'is_active', None)
             if is_active is not None:
-                print(f"[状态] Teleop Policy 激活状态: {'已激活' if is_active else '未激活'}")
-        
-        # 检查手腕位置
+                print(f"[Status] Teleop Policy activation status: {'Activated' if is_active else 'Not activated'}")
+
+        # Check wrist position
         if "wrist_pose" in data:
             wrist_pose = np.array(data["wrist_pose"])
             if len(wrist_pose) >= 14:
                 left_pos = wrist_pose[0:3]
                 right_pos = wrist_pose[7:10]
-                print(f"[手腕位置] 左手: [{left_pos[0]:.3f}, {left_pos[1]:.3f}, {left_pos[2]:.3f}]")
-                print(f"[手腕位置] 右手: [{right_pos[0]:.3f}, {right_pos[1]:.3f}, {right_pos[2]:.3f}]")
-                
-                # 检查位置是否有效（非零且不在原点）
+                print(f"[Wrist Position] Left: [{left_pos[0]:.3f}, {left_pos[1]:.3f}, {left_pos[2]:.3f}]")
+                print(f"[Wrist Position] Right: [{right_pos[0]:.3f}, {right_pos[1]:.3f}, {right_pos[2]:.3f}]")
+
+                # Check if position is valid (non-zero and not at origin)
                 left_valid = not np.allclose(left_pos, 0, atol=0.01)
                 right_valid = not np.allclose(right_pos, 0, atol=0.01)
-                print(f"[有效性] 左手位置: {'有效' if left_valid else '无效（接近原点）'}")
-                print(f"[有效性] 右手位置: {'有效' if right_valid else '无效（接近原点）'}")
+                print(f"[Validity] Left hand position: {'Valid' if left_valid else 'Invalid (near origin)'}")
+                print(f"[Validity] Right hand position: {'Valid' if right_valid else 'Invalid (near origin)'}")
             else:
-                print(f"[警告] wrist_pose长度异常: {len(wrist_pose)} (期望14)")
+                print(f"[Warning] wrist_pose length abnormal: {len(wrist_pose)} (expected 14)")
         else:
-            print("[警告] 缺少 wrist_pose 字段")
-        
-        # 检查手指数据
+            print("[Warning] Missing wrist_pose field")
+
+        # Check finger data
         left_fingers_present = "left_fingers" in data
         right_fingers_present = "right_fingers" in data
-        print(f"[手指数据] 左手: {'存在' if left_fingers_present else '缺失'} | 右手: {'存在' if right_fingers_present else '缺失'}")
-        
+        print(f"[Finger Data] Left: {'Present' if left_fingers_present else 'Missing'} | Right: {'Present' if right_fingers_present else 'Missing'}")
+
         if left_fingers_present and isinstance(data["left_fingers"], dict):
             if "position" in data["left_fingers"]:
                 left_fingers = np.array(data["left_fingers"]["position"])
-                # 检查是否有手指关闭（扳机按下）
+                # Check if any finger is closed (trigger pressed)
                 index_finger = left_fingers[4 + 5, 0, 3] if left_fingers.shape[0] > 9 else 0
-                print(f"[手指状态] 左手食指: {'关闭' if index_finger > 0.5 else '打开'}")
-        
+                print(f"[Finger Status] Left index finger: {'Closed' if index_finger > 0.5 else 'Open'}")
+
         if right_fingers_present and isinstance(data["right_fingers"], dict):
             if "position" in data["right_fingers"]:
                 right_fingers = np.array(data["right_fingers"]["position"])
                 index_finger = right_fingers[4 + 5, 0, 3] if right_fingers.shape[0] > 9 else 0
-                print(f"[手指状态] 右手食指: {'关闭' if index_finger > 0.5 else '打开'}")
-        
-        # 检查导航命令
+                print(f"[Finger Status] Right index finger: {'Closed' if index_finger > 0.5 else 'Open'}")
+
+        # Check navigation command
         if "navigate_cmd" in data:
             nav_cmd = np.array(data["navigate_cmd"])
             if len(nav_cmd) >= 3:
-                print(f"[导航命令] 线性速度: [{nav_cmd[0]:.3f}, {nav_cmd[1]:.3f}] | 角速度: {nav_cmd[2]:.3f}")
+                print(f"[Navigation Command] Linear velocity: [{nav_cmd[0]:.3f}, {nav_cmd[1]:.3f}] | Angular velocity: {nav_cmd[2]:.3f}")
                 nav_active = not np.allclose(nav_cmd, 0, atol=0.01)
-                print(f"[有效性] 导航命令: {'活跃' if nav_active else '静止'}")
+                print(f"[Validity] Navigation command: {'Active' if nav_active else 'Stationary'}")
             else:
-                print(f"[警告] navigate_cmd长度异常: {len(nav_cmd)} (期望3)")
+                print(f"[Warning] navigate_cmd length abnormal: {len(nav_cmd)} (expected 3)")
         else:
-            print("[警告] 缺少 navigate_cmd 字段")
-        
-        # 检查底盘高度命令
+            print("[Warning] Missing navigate_cmd field")
+
+        # Check base height command
         if "base_height_command" in data:
             height_cmd = data["base_height_command"]
             if isinstance(height_cmd, (list, np.ndarray)):
                 height_val = height_cmd[0] if len(height_cmd) > 0 else height_cmd
             else:
                 height_val = height_cmd
-            print(f"[底盘高度] 命令值: {height_val:.3f}")
+            print(f"[Base Height] Command value: {height_val:.3f}")
         else:
-            print("[警告] 缺少 base_height_command 字段")
-        
-        # 检查目标关节角度
+            print("[Warning] Missing base_height_command field")
+
+        # Check target joint angles
         if "target_upper_body_pose" in data:
             target_pose = np.array(data["target_upper_body_pose"])
-            print(f"[目标关节] 关节数量: {len(target_pose)}")
+            print(f"[Target Joints] Joint count: {len(target_pose)}")
             if len(target_pose) > 0:
-                print(f"[目标关节] 范围: [{target_pose.min():.3f}, {target_pose.max():.3f}]")
-                print(f"[目标关节] 均值: {target_pose.mean():.3f}")
+                print(f"[Target Joints] Range: [{target_pose.min():.3f}, {target_pose.max():.3f}]")
+                print(f"[Target Joints] Mean: {target_pose.mean():.3f}")
         else:
-            print("[警告] 缺少 target_upper_body_pose 字段")
-        
-        # 检查时间戳
+            print("[Warning] Missing target_upper_body_pose field")
+
+        # Check timestamp
         if "timestamp" in data:
-            print(f"[时间戳] {data['timestamp']:.6f}")
-        
-        # 检查数据源
+            print(f"[Timestamp] {data['timestamp']:.6f}")
+
+        # Check data source
         if hasattr(data, 'get'):
             source = data.get('source', 'unknown')
-            print(f"[数据源] {source}")
-        
+            print(f"[Data Source] {source}")
+
         print("="*60 + "\n")
-    
+
     def print_summary(self):
-        """打印统计摘要"""
+        """Print statistics summary"""
         if not self.enable_debug:
             return
-        
+
         print("\n" + "="*60)
-        print("[VR调试摘要]")
-        print(f"  总接收数据次数: {self.data_received_count}")
-        print(f"  数据变化次数: {self.data_change_count}")
+        print("[VR Debug Summary]")
+        print(f"  Total data received count: {self.data_received_count}")
+        print(f"  Data change count: {self.data_change_count}")
         if self.data_received_count > 0:
             change_rate = self.data_change_count / self.data_received_count * 100
-            print(f"  数据变化率: {change_rate:.2f}%")
+            print(f"  Data change rate: {change_rate:.2f}%")
         print("="*60 + "\n")
 
 
@@ -242,18 +242,18 @@ def main(config: TeleopConfig):
     time_to_get_to_initial_pose = 2  # seconds
 
     telemetry = Telemetry(window_size=100)
-    
-    # 初始化VR数据调试器
-    # 可以通过环境变量或配置来控制调试输出
+
+    # Initialize VR data debugger
+    # Can control debug output via environment variable or config
     import os
     enable_debug = os.getenv("VR_DEBUG", "true").lower() == "true"
-    debug_print_interval = float(os.getenv("VR_DEBUG_INTERVAL", "1.0"))  # 默认每秒打印一次
+    debug_print_interval = float(os.getenv("VR_DEBUG_INTERVAL", "1.0"))  # Default print once per second
     vr_debugger = VRDataDebugger(enable_debug=enable_debug, print_interval=debug_print_interval)
-    
+
     print("\n" + "="*60)
-    print("[VR调试] 调试模式已启用")
-    print(f"[VR调试] 打印间隔: {debug_print_interval}秒")
-    print(f"[VR调试] 控制频率: {config.teleop_frequency}Hz")
+    print("[VR Debug] Debug mode enabled")
+    print(f"[VR Debug] Print interval: {debug_print_interval}s")
+    print(f"[VR Debug] Control frequency: {config.teleop_frequency}Hz")
     print("="*60 + "\n")
 
     try:
@@ -263,10 +263,10 @@ def main(config: TeleopConfig):
                 # Get the current teleop action
                 with telemetry.timer("get_action"):
                     data = teleop_policy.get_action()
-                    
-                    # 检查VR数据
+
+                    # Check VR data
                     vr_debugger.check_data(data, iteration)
-                
+
                 # Add timing information to the message
                 t_now = time.monotonic()
                 if data:
@@ -282,7 +282,7 @@ def main(config: TeleopConfig):
                     with telemetry.timer("publish_teleop_command"):
                         control_publisher.publish(data)
                 else:
-                    print("[警告] teleop_policy.get_action() 返回了 None 或空数据！")
+                    print("[Warning] teleop_policy.get_action() returned None or empty data!")
 
                 # For the initial pose, wait the full duration before continuing
                 if iteration == 0:
@@ -299,7 +299,7 @@ def main(config: TeleopConfig):
 
     finally:
         print("Cleaning up...")
-        # 打印调试摘要
+        # Print debug summary
         vr_debugger.print_summary()
         ros_manager.shutdown()
 
