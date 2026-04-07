@@ -1,3 +1,5 @@
+<img width="953" height="517" alt="image" src="https://github.com/user-attachments/assets/b5391fa9-0f72-42d7-a6dc-1c771497a38c" />
+
 # EgoHumanoid
 
 <div align="center">
