@@ -9,16 +9,20 @@
 </div>
 
 <p align="center">
-  <strong>🤖 The first framework enabling humanoid robots to learn whole-body loco-manipulation from egocentric human demonstrations.</strong>
+  <strong>🤖 The first framework enabling humanoid loco-manipulation with egocentric human demonstrations.</strong>
 </p>
-EgoHumanoid bridges human and robot embodiments by aligning egocentric human observations to robot viewpoint perspectives. We collect egocentric human motion data with PICO VR headsets and ZED cameras, process it through view alignment and action retargeting pipelines, and train vision-language-action (VLA) models based on π₀.₅ that enable humanoid robots to perform complex whole-body loco-manipulation tasks.
+
+Human demonstrations offer rich environmental diversity and scale naturally, making them an appealing alternative to robot teleoperation. We present EGOHUMANOID, the first framework to co-train a vision-language-action policy using abundant egocentric human demonstrations together with a limited amount of robot data.
+
+To bridge the embodiment gap, we introduce a systematic alignment pipeline with two key components: view alignment reduces visual discrepancies; action alignment maps human motions into a unified action space for humanoid control.
+
+Extensive real-world experiments demonstrate that incorporating robot-free egocentric data significantly outperforms robot-only baselines by 51%, particularly in unseen environments.
 
 
 ---
 
 ## Table of Contents
 
-- [📢 News](#news)
 - [📖 Overview](#overview)
 - [🛠️ Hardware Setup](#hardware-setup)
   - [🤖 Robot Data Collection Hardware](#robot-data-collection-hardware)
@@ -48,15 +52,6 @@ EgoHumanoid bridges human and robot embodiments by aligning egocentric human obs
 - [Human Data Collection Guide →](data_collection/human_data/README.md)
 - [Data Processing Pipeline →](data_alignment/human_data_process/README.md)
 - [View Alignment →](data_alignment/view_alignment/README.md)
-
----
-
-<a id="news"></a>
-
-## 📢 News
-
-- **`2026.04.07`** 🎉 **Code released!** Full implementation of EgoHumanoid is now available.
-- **`2026.02.10`** 📄 **Paper released** on [arXiv](https://arxiv.org/abs/2602.10106).
 
 ---
 
