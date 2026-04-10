@@ -149,6 +149,9 @@ Deploy trained policies on real humanoid robots with real-time inference
 - 🎯 Full-body tracking activated
 - 🔌 ZED Mini via USB 3.0
 
+> [!NOTE]
+> We use **ZED Mini** instead of **ZED X Mini** (as in the paper) for easier accessibility and setup.
+
 ---
 
 <a id="environment-setup"></a>
